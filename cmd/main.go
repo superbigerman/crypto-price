@@ -12,7 +12,6 @@ import (
 	"final/internal/usecase"
 )
 
-// Мок-репозиторий
 type mockRepo struct {
 	prices map[string][]entity.Price
 }
@@ -36,18 +35,47 @@ func (m *mockRepo) SavePrice(price entity.Price) error {
 	return nil
 }
 
-func (m *mockRepo) GetAllPrices(symbol string) ([]entity.Price, error) {
-	if m.prices == nil {
-		return nil, fmt.Errorf("repository not initialized")
-	}
+func (m *mockRepo) GetMinPrice(symbol string) (float64, error) {
 	prices, ok := m.prices[symbol]
-	if !ok {
-		return []entity.Price{}, nil
+	if !ok || len(prices) == 0 {
+		return 0, fmt.Errorf("no prices for %s", symbol)
 	}
-	return prices, nil
+	minPrice := prices[0].Price
+	for _, p := range prices {
+		if p.Price < minPrice {
+			minPrice = p.Price
+		}
+	}
+	return minPrice, nil
 }
 
-// Мок для внешнего API
+func (m *mockRepo) GetMaxPrice(symbol string) (float64, error) {
+	prices, ok := m.prices[symbol]
+	if !ok || len(prices) == 0 {
+		return 0, fmt.Errorf("no prices for %s", symbol)
+	}
+	maxPrice := prices[0].Price
+	for _, p := range prices {
+		if p.Price > maxPrice {
+			maxPrice = p.Price
+		}
+	}
+	return maxPrice, nil
+}
+
+func (m *mockRepo) GetPriceAtTime(symbol string, timestamp time.Time) (entity.Price, error) {
+	prices, ok := m.prices[symbol]
+	if !ok || len(prices) == 0 {
+		return entity.Price{}, fmt.Errorf("no prices for %s", symbol)
+	}
+	for i := len(prices) - 1; i >= 0; i-- {
+		if prices[i].CreatedAt.Before(timestamp) || prices[i].CreatedAt.Equal(timestamp) {
+			return prices[i], nil
+		}
+	}
+	return entity.Price{}, fmt.Errorf("no price before %v", timestamp)
+}
+
 type mockExternalAPI struct{}
 
 func (m *mockExternalAPI) GetRealTimePrice(symbol string) (float64, error) {
@@ -61,7 +89,7 @@ func (m *mockExternalAPI) GetRealTimePrice(symbol string) (float64, error) {
 	if price, ok := mockPrices[symbol]; ok {
 		return price, nil
 	}
-	return 100, nil
+	return 0, fmt.Errorf("price for %s not available", symbol)
 }
 
 func main() {
@@ -70,7 +98,6 @@ func main() {
 	uc := usecase.NewPriceUseCase(repo, externalAPI)
 
 	// Тестовые данные
-
 	uc.SavePrice("BTC", 44000)
 	time.Sleep(2 * time.Second)
 	uc.SavePrice("BTC", 44500)

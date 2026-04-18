@@ -3,6 +3,8 @@ package usecase
 import (
 	"errors"
 	"final/internal/entity"
+	"fmt"
+	"log"
 	"time"
 )
 
@@ -18,33 +20,49 @@ func NewPriceUseCase(repo entity.PriceRepository, api entity.ExternalAPI) *Price
 	}
 }
 
-// GetPrice - получить цену (любой валюты!)
-func (uc *PriceUseCase) GetPrice(symbol string) (entity.Price, error) {
-	// 1. Сначала пробуем получить из базы
+// Возвращаем из базы данных
+func (uc *PriceUseCase) GetPriceFromDB(symbol string) (entity.Price, error) {
 	price, err := uc.repo.GetPrice(symbol)
-	if err == nil {
-		return price, nil
+	if err != nil {
+		return entity.Price{}, fmt.Errorf("failed to get price from DB: %w", err)
 	}
+	return price, nil
+}
 
-	// 2. В базе нет — идём во внешний API
+// Получить цену из внешнего API и сохранить в БД
+func (uc *PriceUseCase) FetchAndSave(symbol string) (entity.Price, error) {
 	realPrice, err := uc.externalAPI.GetRealTimePrice(symbol)
 	if err != nil {
-		return entity.Price{}, errors.New("price for " + symbol + " not available")
+		return entity.Price{}, fmt.Errorf("failed to fetch from API: %w", err)
 	}
 
-	// 3. Сохраняем в базу для следующих запросов
 	newPrice := entity.Price{
 		Symbol:    symbol,
 		Price:     realPrice,
 		CreatedAt: time.Now(),
 	}
-	uc.repo.SavePrice(newPrice)
+
+	if err := uc.repo.SavePrice(newPrice); err != nil {
+		log.Printf("WARNING: failed to save price to DB: %v", err)
+	}
 
 	return newPrice, nil
 }
 
+// Сначала база данных, а потом API
+func (uc *PriceUseCase) GetPrice(symbol string) (entity.Price, error) {
+	price, err := uc.GetPriceFromDB(symbol)
+	if err == nil {
+		return price, nil
+	}
+	return uc.FetchAndSave(symbol)
+}
+
 // SavePrice - сохранить цену
 func (uc *PriceUseCase) SavePrice(symbol string, priceValue float64) error {
+	if symbol == "" {
+		return errors.New("symbol cannot be empty")
+	}
 	if priceValue < 0 {
 		return errors.New("price cannot be negative")
 	}
@@ -59,90 +77,50 @@ func (uc *PriceUseCase) SavePrice(symbol string, priceValue float64) error {
 
 // GetMinPrice - получить минимальную цену
 func (uc *PriceUseCase) GetMinPrice(symbol string) (float64, error) {
-	if symbol != "BTC" && symbol != "ETH" {
-		return 0, errors.New("min price available only for BTC and ETH")
+	if symbol == "" {
+		return 0, errors.New("symbol cannot be empty")
 	}
-
-	prices, err := uc.repo.GetAllPrices(symbol)
+	minPrice, err := uc.repo.GetMinPrice(symbol)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("faild to get min price: %w", err)
 	}
-
-	if len(prices) == 0 {
-		return 0, errors.New("no prices found for " + symbol)
-	}
-
-	minPrice := prices[0].Price
-	for _, p := range prices {
-		if p.Price < minPrice {
-			minPrice = p.Price
-		}
-	}
-
 	return minPrice, nil
+
 }
 
 // GetMaxPrice - получить максимальную цену
 func (uc *PriceUseCase) GetMaxPrice(symbol string) (float64, error) {
-	if symbol != "BTC" && symbol != "ETH" {
-		return 0, errors.New("max price available only for BTC and ETH")
+	if symbol == "" {
+		return 0, errors.New("symbol cannot be empty")
 	}
-
-	prices, err := uc.repo.GetAllPrices(symbol)
+	maxPrice, err := uc.repo.GetMaxPrice(symbol)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("faild to get max price: %w", err)
 	}
-
-	if len(prices) == 0 {
-		return 0, errors.New("no prices found for " + symbol)
-	}
-
-	maxPrice := prices[0].Price
-	for _, p := range prices {
-		if p.Price > maxPrice {
-			maxPrice = p.Price
-		}
-	}
-
 	return maxPrice, nil
 }
 
 // GetChangePercent - получить процент изменения за час
+// GetChangePercent возвращает процент изменения цены за час
 func (uc *PriceUseCase) GetChangePercent(symbol string) (float64, error) {
-	if symbol != "BTC" && symbol != "ETH" {
-		return 0, errors.New("change percent available only for BTC and ETH")
+	if symbol == "" {
+		return 0, errors.New("symbol cannot be empty")
 	}
 
-	prices, err := uc.repo.GetAllPrices(symbol)
+	current, err := uc.repo.GetPrice(symbol)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get current price: %w", err)
 	}
-
-	if len(prices) == 0 {
-		return 0, errors.New("no prices found for " + symbol)
-	}
-
-	currentPrice := prices[len(prices)-1].Price
 
 	hourAgo := time.Now().Add(-1 * time.Hour)
-	var hourAgoPrice float64
-	found := false
-
-	for i := len(prices) - 1; i >= 0; i-- {
-		if prices[i].CreatedAt.Before(hourAgo) || prices[i].CreatedAt.Equal(hourAgo) {
-			hourAgoPrice = prices[i].Price
-			found = true
-			break
-		}
+	oldPrice, err := uc.repo.GetPriceAtTime(symbol, hourAgo)
+	if err != nil {
+		return 0, fmt.Errorf("no price data for 1 hour ago: %w", err)
 	}
 
-	if !found {
-		hourAgoPrice = prices[0].Price
+	if oldPrice.Price == 0 {
+		return 0, errors.New("cannot calculate change: price hour ago was zero")
 	}
 
-	if hourAgoPrice == 0 {
-		return 0, errors.New("cannot calculate change")
-	}
-
-	return ((currentPrice - hourAgoPrice) / hourAgoPrice) * 100, nil
+	return ((current.Price - oldPrice.Price) / oldPrice.Price) * 100, nil
 }

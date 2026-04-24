@@ -4,23 +4,43 @@ import (
 	"errors"
 	"final/internal/entity"
 	"fmt"
-	"log"
-	"time"
 )
 
-type PriceUseCase struct {
-	repo        entity.PriceRepository
-	externalAPI entity.ExternalAPI
+// ========== ИНТЕРФЕЙСЫ (НА СТОРОНЕ ПОТРЕБИТЕЛЯ) ==========
+
+// PriceRepository — интерфейс для работы с хранилищем цен
+type PriceRepository interface {
+	GetPrice(symbol string) (entity.Price, error)
+	SavePrice(price entity.Price) error
+	GetMinPrice(symbol string) (entity.MinPriceResponse, error)
+	GetMaxPrice(symbol string) (entity.MaxPriceResponse, error)
+	GetChangePercent(symbol string) (entity.ChangePercentResponse, error)
+	GetPrices(symbols []string) (map[string]entity.Price, error) // цены нескольких валют
 }
 
-func NewPriceUseCase(repo entity.PriceRepository, api entity.ExternalAPI) *PriceUseCase {
+// ExternalAPI — интерфейс для внешнего API
+type ExternalAPI interface {
+	GetRealTimePrice(symbol string) (entity.Price, error)
+}
+
+// ========== БИЗНЕС-ЛОГИКА ==========
+
+type PriceUseCase struct {
+	repo        PriceRepository
+	externalAPI ExternalAPI
+}
+
+// NewPriceUseCase — конструктор, внедряет зависимости
+func NewPriceUseCase(repo PriceRepository, api ExternalAPI) *PriceUseCase {
 	return &PriceUseCase{
 		repo:        repo,
 		externalAPI: api,
 	}
 }
 
-// Возвращаем из базы данных
+// ========== РАБОТА С ЦЕНАМИ ==========
+
+// GetPriceFromDB — получить цену ТОЛЬКО из базы данных
 func (uc *PriceUseCase) GetPriceFromDB(symbol string) (entity.Price, error) {
 	price, err := uc.repo.GetPrice(symbol)
 	if err != nil {
@@ -29,36 +49,45 @@ func (uc *PriceUseCase) GetPriceFromDB(symbol string) (entity.Price, error) {
 	return price, nil
 }
 
-// Получить цену из внешнего API и сохранить в БД
+// FetchAndSave — получить цену из внешнего API и сохранить в БД
 func (uc *PriceUseCase) FetchAndSave(symbol string) (entity.Price, error) {
-	realPrice, err := uc.externalAPI.GetRealTimePrice(symbol)
+	newPrice, err := uc.externalAPI.GetRealTimePrice(symbol)
 	if err != nil {
 		return entity.Price{}, fmt.Errorf("failed to fetch from API: %w", err)
 	}
 
-	newPrice := entity.Price{
-		Symbol:    symbol,
-		Price:     realPrice,
-		CreatedAt: time.Now(),
-	}
-
+	// Сохраняем в БД
 	if err := uc.repo.SavePrice(newPrice); err != nil {
-		log.Printf("WARNING: failed to save price to DB: %v", err)
+		return entity.Price{}, fmt.Errorf("failed to save price to DB: %w", err)
 	}
 
 	return newPrice, nil
 }
 
-// Сначала база данных, а потом API
+// GetPrice — умный метод: сначала БД, если нет — внешний API
 func (uc *PriceUseCase) GetPrice(symbol string) (entity.Price, error) {
+	if symbol == "" {
+		return entity.Price{}, errors.New("symbol cannot be empty")
+	}
+
+	// Приоритет — свои данные (быстрее и надёжнее)
 	price, err := uc.GetPriceFromDB(symbol)
 	if err == nil {
 		return price, nil
 	}
+	// Fallback — внешний API
 	return uc.FetchAndSave(symbol)
 }
 
-// SavePrice - сохранить цену
+// GetPrices — получить цены для нескольких валют
+func (uc *PriceUseCase) GetPrices(symbols []string) (map[string]entity.Price, error) {
+	if len(symbols) == 0 {
+		return nil, errors.New("symbols list cannot be empty")
+	}
+	return uc.repo.GetPrices(symbols)
+}
+
+// SavePrice — сохранить цену (ручное сохранение)
 func (uc *PriceUseCase) SavePrice(symbol string, priceValue float64) error {
 	if symbol == "" {
 		return errors.New("symbol cannot be empty")
@@ -67,60 +96,54 @@ func (uc *PriceUseCase) SavePrice(symbol string, priceValue float64) error {
 		return errors.New("price cannot be negative")
 	}
 
-	price := entity.Price{
-		Symbol:    symbol,
-		Price:     priceValue,
-		CreatedAt: time.Now(),
+	price, err := entity.NewPrice(symbol, priceValue)
+	if err != nil {
+		return err
 	}
-	return uc.repo.SavePrice(price)
+
+	return uc.repo.SavePrice(*price)
 }
 
-// GetMinPrice - получить минимальную цену
-func (uc *PriceUseCase) GetMinPrice(symbol string) (float64, error) {
+// ========== СТАТИСТИКА ==========
+
+// GetMinPrice — минимальная цена за всё время
+func (uc *PriceUseCase) GetMinPrice(symbol string) (entity.MinPriceResponse, error) {
 	if symbol == "" {
-		return 0, errors.New("symbol cannot be empty")
+		return entity.MinPriceResponse{}, errors.New("symbol cannot be empty")
 	}
+
 	minPrice, err := uc.repo.GetMinPrice(symbol)
 	if err != nil {
-		return 0, fmt.Errorf("faild to get min price: %w", err)
+		return entity.MinPriceResponse{}, fmt.Errorf("failed to get min price: %w", err)
 	}
-	return minPrice, nil
 
+	return minPrice, nil
 }
 
-// GetMaxPrice - получить максимальную цену
-func (uc *PriceUseCase) GetMaxPrice(symbol string) (float64, error) {
+// GetMaxPrice — максимальная цена за всё время
+func (uc *PriceUseCase) GetMaxPrice(symbol string) (entity.MaxPriceResponse, error) {
 	if symbol == "" {
-		return 0, errors.New("symbol cannot be empty")
+		return entity.MaxPriceResponse{}, errors.New("symbol cannot be empty")
 	}
+
 	maxPrice, err := uc.repo.GetMaxPrice(symbol)
 	if err != nil {
-		return 0, fmt.Errorf("faild to get max price: %w", err)
+		return entity.MaxPriceResponse{}, fmt.Errorf("failed to get max price: %w", err)
 	}
+
 	return maxPrice, nil
 }
 
-// GetChangePercent - получить процент изменения за час
-// GetChangePercent возвращает процент изменения цены за час
-func (uc *PriceUseCase) GetChangePercent(symbol string) (float64, error) {
+// GetChangePercent — процент изменения цены за час
+func (uc *PriceUseCase) GetChangePercent(symbol string) (entity.ChangePercentResponse, error) {
 	if symbol == "" {
-		return 0, errors.New("symbol cannot be empty")
+		return entity.ChangePercentResponse{}, errors.New("symbol cannot be empty")
 	}
 
-	current, err := uc.repo.GetPrice(symbol)
+	changePercent, err := uc.repo.GetChangePercent(symbol)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get current price: %w", err)
+		return entity.ChangePercentResponse{}, fmt.Errorf("failed to get change percent: %w", err)
 	}
 
-	hourAgo := time.Now().Add(-1 * time.Hour)
-	oldPrice, err := uc.repo.GetPriceAtTime(symbol, hourAgo)
-	if err != nil {
-		return 0, fmt.Errorf("no price data for 1 hour ago: %w", err)
-	}
-
-	if oldPrice.Price == 0 {
-		return 0, errors.New("cannot calculate change: price hour ago was zero")
-	}
-
-	return ((current.Price - oldPrice.Price) / oldPrice.Price) * 100, nil
+	return changePercent, nil
 }

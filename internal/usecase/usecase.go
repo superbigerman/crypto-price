@@ -4,23 +4,27 @@ import (
 	"errors"
 	"final/internal/entity"
 	"fmt"
+	"log"
 )
 
-// ========== ИНТЕРФЕЙСЫ (НА СТОРОНЕ ПОТРЕБИТЕЛЯ) ==========
-
-// PriceRepository — интерфейс для работы с хранилищем цен
-type PriceRepository interface {
-	GetPrice(symbol string) (entity.Price, error)
-	SavePrice(price entity.Price) error
-	GetMinPrice(symbol string) (entity.MinPriceResponse, error)
-	GetMaxPrice(symbol string) (entity.MaxPriceResponse, error)
-	GetChangePercent(symbol string) (entity.ChangePercentResponse, error)
-	GetPrices(symbols []string) (map[string]entity.Price, error) // цены нескольких валют
+type ChangePercentResult struct {
+	Symbol       string
+	ChagePercent float64
+	Diriction    string // "up", "down", "stable"
 }
 
-// ExternalAPI — интерфейс для внешнего API
+// ========== ИНТЕРФЕЙСЫ ==========
+
+type PriceRepository interface {
+	GetPricesLast(symbols []string) ([]entity.Price, error)
+	GetMinPrices(symbols []string) ([]entity.Price, error)
+	GetMaxPrices(symbols []string) ([]entity.Price, error)
+	GetChangePercent(symbols []string) ([]ChangePercentResult, error)
+	SavePrice(price entity.Price) error
+}
+
 type ExternalAPI interface {
-	GetRealTimePrice(symbol string) (entity.Price, error)
+	GetRealTimePrices(symbols []string) ([]entity.Price, error)
 }
 
 // ========== БИЗНЕС-ЛОГИКА ==========
@@ -30,7 +34,6 @@ type PriceUseCase struct {
 	externalAPI ExternalAPI
 }
 
-// NewPriceUseCase — конструктор, внедряет зависимости
 func NewPriceUseCase(repo PriceRepository, api ExternalAPI) *PriceUseCase {
 	return &PriceUseCase{
 		repo:        repo,
@@ -38,112 +41,100 @@ func NewPriceUseCase(repo PriceRepository, api ExternalAPI) *PriceUseCase {
 	}
 }
 
-// ========== РАБОТА С ЦЕНАМИ ==========
-
-// GetPriceFromDB — получить цену ТОЛЬКО из базы данных
-func (uc *PriceUseCase) GetPriceFromDB(symbol string) (entity.Price, error) {
-	price, err := uc.repo.GetPrice(symbol)
-	if err != nil {
-		return entity.Price{}, fmt.Errorf("failed to get price from DB: %w", err)
-	}
-	return price, nil
-}
-
-// FetchAndSave — получить цену из внешнего API и сохранить в БД
-func (uc *PriceUseCase) FetchAndSave(symbol string) (entity.Price, error) {
-	newPrice, err := uc.externalAPI.GetRealTimePrice(symbol)
-	if err != nil {
-		return entity.Price{}, fmt.Errorf("failed to fetch from API: %w", err)
-	}
-
-	// Сохраняем в БД
-	if err := uc.repo.SavePrice(newPrice); err != nil {
-		return entity.Price{}, fmt.Errorf("failed to save price to DB: %w", err)
-	}
-
-	return newPrice, nil
-}
-
-// GetPrice — умный метод: сначала БД, если нет — внешний API
-func (uc *PriceUseCase) GetPrice(symbol string) (entity.Price, error) {
-	if symbol == "" {
-		return entity.Price{}, errors.New("symbol cannot be empty")
-	}
-
-	// Приоритет — свои данные (быстрее и надёжнее)
-	price, err := uc.GetPriceFromDB(symbol)
-	if err == nil {
-		return price, nil
-	}
-	// Fallback — внешний API
-	return uc.FetchAndSave(symbol)
-}
-
-// GetPrices — получить цены для нескольких валют
-func (uc *PriceUseCase) GetPrices(symbols []string) (map[string]entity.Price, error) {
+// GetPricesLast — возвращает последние цены
+func (uc *PriceUseCase) GetPricesLast(symbols []string) ([]entity.Price, error) {
 	if len(symbols) == 0 {
 		return nil, errors.New("symbols list cannot be empty")
 	}
-	return uc.repo.GetPrices(symbols)
+
+	for _, s := range symbols {
+		if s == "" {
+			return nil, errors.New("symbol cannot be empty")
+		}
+	}
+
+	dbPrices, err := uc.repo.GetPricesLast(symbols)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get prices from DB: %w", err)
+	}
+
+	if len(dbPrices) == len(symbols) {
+		return dbPrices, nil
+	}
+
+	apiPrices, err := uc.externalAPI.GetRealTimePrices(symbols)
+	if err != nil {
+		if len(dbPrices) > 0 {
+			return dbPrices, nil
+		}
+		return nil, fmt.Errorf("failed to get prices from API: %w", err)
+	}
+
+	for _, price := range apiPrices {
+		if err := uc.repo.SavePrice(price); err != nil {
+			log.Printf("WARNING: failed to save price for %s: %v", price.Symbol, err)
+		}
+	}
+
+	return apiPrices, nil
 }
 
-// SavePrice — сохранить цену (ручное сохранение)
-func (uc *PriceUseCase) SavePrice(symbol string, priceValue float64) error {
-	if symbol == "" {
-		return errors.New("symbol cannot be empty")
+// GetMinPrices — возвращает минимальные цены
+func (uc *PriceUseCase) GetMinPrices(symbols []string) ([]entity.Price, error) {
+	if len(symbols) == 0 {
+		return nil, errors.New("symbols list cannot be empty")
 	}
-	if priceValue < 0 {
-		return errors.New("price cannot be negative")
+	for _, s := range symbols {
+		if s == "" {
+			return nil, errors.New("symbol cannot be empty")
+		}
 	}
-
-	price, err := entity.NewPrice(symbol, priceValue)
+	minPrices, err := uc.repo.GetMinPrices(symbols)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to get min prices from DB: %w", err)
 	}
-
-	return uc.repo.SavePrice(*price)
+	if len(minPrices) == 0 {
+		return nil, fmt.Errorf("no min prices found for requested symbols")
+	}
+	return minPrices, nil
 }
 
-// ========== СТАТИСТИКА ==========
-
-// GetMinPrice — минимальная цена за всё время
-func (uc *PriceUseCase) GetMinPrice(symbol string) (entity.MinPriceResponse, error) {
-	if symbol == "" {
-		return entity.MinPriceResponse{}, errors.New("symbol cannot be empty")
+// GetMaxPrices — возвращает максимальные цены
+func (uc *PriceUseCase) GetMaxPrices(symbols []string) ([]entity.Price, error) {
+	if len(symbols) == 0 {
+		return nil, errors.New("symbols list cannot be empty")
 	}
-
-	minPrice, err := uc.repo.GetMinPrice(symbol)
+	for _, s := range symbols {
+		if s == "" {
+			return nil, errors.New("symbol cannot be empty")
+		}
+	}
+	maxPrices, err := uc.repo.GetMaxPrices(symbols)
 	if err != nil {
-		return entity.MinPriceResponse{}, fmt.Errorf("failed to get min price: %w", err)
+		return nil, fmt.Errorf("failed to get max prices from DB: %w", err)
 	}
-
-	return minPrice, nil
+	if len(maxPrices) == 0 {
+		return nil, errors.New("no max prices found for requested symbols")
+	}
+	return maxPrices, nil
 }
 
-// GetMaxPrice — максимальная цена за всё время
-func (uc *PriceUseCase) GetMaxPrice(symbol string) (entity.MaxPriceResponse, error) {
-	if symbol == "" {
-		return entity.MaxPriceResponse{}, errors.New("symbol cannot be empty")
+// GetChangePercent — возвращает изменение за час
+func (uc *PriceUseCase) GetChangePercent(symbols []string) ([]ChangePercentResult, error) {
+	if len(symbols) == 0 {
+		return nil, errors.New("symbols list cannot be empty")
 	}
-
-	maxPrice, err := uc.repo.GetMaxPrice(symbol)
+	for _, s := range symbols {
+		if s == "" {
+			return nil, errors.New("symbol cannot be empty")
+		}
+	}
+	results, err := uc.repo.GetChangePercent(symbols)
 	if err != nil {
-		return entity.MaxPriceResponse{}, fmt.Errorf("failed to get max price: %w", err)
+		return nil, fmt.Errorf("failed to get change percent from DB: %w", err)
 	}
-
-	return maxPrice, nil
-}
-
-// GetChangePercent — процент изменения цены за час
-func (uc *PriceUseCase) GetChangePercent(symbol string) (entity.ChangePercentResponse, error) {
-	if symbol == "" {
-		return entity.ChangePercentResponse{}, errors.New("symbol cannot be empty")
+	if len(results) == 0 {
+		return nil, errors.New("no change percent data found for requested symbols")
 	}
-
-	changePercent, err := uc.repo.GetChangePercent(symbol)
-	if err != nil {
-		return entity.ChangePercentResponse{}, fmt.Errorf("failed to get change percent: %w", err)
-	}
-
-	return changePercent, nil
+	return results, nil
 }

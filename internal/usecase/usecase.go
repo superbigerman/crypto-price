@@ -1,30 +1,25 @@
 package usecase
 
 import (
-	"errors"
+	"context"
 	"final/internal/entity"
 	"fmt"
 	"log"
 )
 
-type ChangePercentResult struct {
-	Symbol       string
-	ChagePercent float64
-	Diriction    string // "up", "down", "stable"
-}
-
 // ========== ИНТЕРФЕЙСЫ ==========
 
 type PriceRepository interface {
-	GetPricesLast(symbols []string) ([]entity.Price, error)
-	GetMinPrices(symbols []string) ([]entity.Price, error)
-	GetMaxPrices(symbols []string) ([]entity.Price, error)
-	GetChangePercent(symbols []string) ([]ChangePercentResult, error)
-	SavePrice(price entity.Price) error
+	GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error)
+	GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error)
+	GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error)
+	GetChangePercent(ctx context.Context, symbols []string) ([]float64, error)
+	SavePrices(ctx context.Context, prices []entity.Price) error
+	GetExistingSymbols(ctx context.Context, symbols []string) ([]string, error)
 }
 
 type ExternalAPI interface {
-	GetRealTimePrices(symbols []string) ([]entity.Price, error)
+	GetRealTimePrices(ctx context.Context, symbols []string) ([]entity.Price, error)
 }
 
 // ========== БИЗНЕС-ЛОГИКА ==========
@@ -34,107 +29,64 @@ type PriceUseCase struct {
 	externalAPI ExternalAPI
 }
 
-func NewPriceUseCase(repo PriceRepository, api ExternalAPI) *PriceUseCase {
-	return &PriceUseCase{
-		repo:        repo,
-		externalAPI: api,
-	}
-}
-
 // GetPricesLast — возвращает последние цены
-func (uc *PriceUseCase) GetPricesLast(symbols []string) ([]entity.Price, error) {
-	if len(symbols) == 0 {
-		return nil, errors.New("symbols list cannot be empty")
-	}
-
-	for _, s := range symbols {
-		if s == "" {
-			return nil, errors.New("symbol cannot be empty")
-		}
-	}
-
-	dbPrices, err := uc.repo.GetPricesLast(symbols)
+func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error) {
+	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get prices from DB: %w", err)
+		return nil, err
 	}
 
-	if len(dbPrices) == len(symbols) {
-		return dbPrices, nil
+	// Если все валюты уже есть в таблице currencies → берём из БД
+	if len(existingSymbols) == len(symbols) {
+		return uc.repo.GetPricesLast(ctx, symbols)
 	}
 
-	apiPrices, err := uc.externalAPI.GetRealTimePrices(symbols)
+	// Если какой‑то валюты нет → идём во внешний API за всеми
+	apiPrices, err := uc.externalAPI.GetRealTimePrices(ctx, symbols)
 	if err != nil {
-		if len(dbPrices) > 0 {
-			return dbPrices, nil
-		}
 		return nil, fmt.Errorf("failed to get prices from API: %w", err)
 	}
 
-	for _, price := range apiPrices {
-		if err := uc.repo.SavePrice(price); err != nil {
-			log.Printf("WARNING: failed to save price for %s: %v", price.Symbol, err)
-		}
+	// Сохраняем цены (репозиторий сам разберётся с добавлением валют)
+	if err := uc.repo.SavePrices(ctx, apiPrices); err != nil {
+		log.Printf("WARNING: failed to save prices: %v", err)
 	}
 
 	return apiPrices, nil
 }
 
 // GetMinPrices — возвращает минимальные цены
-func (uc *PriceUseCase) GetMinPrices(symbols []string) ([]entity.Price, error) {
-	if len(symbols) == 0 {
-		return nil, errors.New("symbols list cannot be empty")
-	}
-	for _, s := range symbols {
-		if s == "" {
-			return nil, errors.New("symbol cannot be empty")
-		}
-	}
-	minPrices, err := uc.repo.GetMinPrices(symbols)
+func (uc *PriceUseCase) GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
+	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get min prices from DB: %w", err)
+		return nil, err
 	}
-	if len(minPrices) == 0 {
-		return nil, fmt.Errorf("no min prices found for requested symbols")
+	if len(existingSymbols) == 0 {
+		return nil, fmt.Errorf("no existingSymbols")
 	}
-	return minPrices, nil
+	return uc.repo.GetMinPrices(ctx, existingSymbols)
 }
 
 // GetMaxPrices — возвращает максимальные цены
-func (uc *PriceUseCase) GetMaxPrices(symbols []string) ([]entity.Price, error) {
-	if len(symbols) == 0 {
-		return nil, errors.New("symbols list cannot be empty")
-	}
-	for _, s := range symbols {
-		if s == "" {
-			return nil, errors.New("symbol cannot be empty")
-		}
-	}
-	maxPrices, err := uc.repo.GetMaxPrices(symbols)
+func (uc *PriceUseCase) GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
+	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get max prices from DB: %w", err)
+		return nil, err
 	}
-	if len(maxPrices) == 0 {
-		return nil, errors.New("no max prices found for requested symbols")
+	if len(existingSymbols) == 0 {
+		return nil, fmt.Errorf("no existingSymbols")
 	}
-	return maxPrices, nil
+	return uc.repo.GetMaxPrices(ctx, existingSymbols)
 }
 
 // GetChangePercent — возвращает изменение за час
-func (uc *PriceUseCase) GetChangePercent(symbols []string) ([]ChangePercentResult, error) {
-	if len(symbols) == 0 {
-		return nil, errors.New("symbols list cannot be empty")
-	}
-	for _, s := range symbols {
-		if s == "" {
-			return nil, errors.New("symbol cannot be empty")
-		}
-	}
-	results, err := uc.repo.GetChangePercent(symbols)
+func (uc *PriceUseCase) GetChangePercent(ctx context.Context, symbols []string) ([]float64, error) {
+	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get change percent from DB: %w", err)
+		return nil, err
 	}
-	if len(results) == 0 {
-		return nil, errors.New("no change percent data found for requested symbols")
+	if len(existingSymbols) == 0 {
+		return nil, fmt.Errorf("no existing symbols provided")
 	}
-	return results, nil
+	return uc.repo.GetChangePercent(ctx, existingSymbols)
 }

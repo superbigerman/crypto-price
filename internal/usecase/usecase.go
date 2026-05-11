@@ -47,6 +47,10 @@ func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]
 		return nil, fmt.Errorf("failed to get prices from API: %w", err)
 	}
 
+	if len(apiPrices) != len(symbols) {
+		log.Printf("INFO: requested %d currencies, but API returned only %d. Some currencies may not exist.", len(symbols), len(apiPrices))
+	}
+
 	// Сохраняем цены (репозиторий сам разберётся с добавлением валют)
 	if err := uc.repo.SavePrices(ctx, apiPrices); err != nil {
 		log.Printf("WARNING: failed to save prices: %v", err)

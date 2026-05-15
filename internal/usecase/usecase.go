@@ -37,7 +37,21 @@ func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]
 	}
 
 	// Если все валюты уже есть в таблице currencies → берём из БД
-	if len(existingSymbols) == len(symbols) {
+	allExist := true
+	for _, reqsymbol := range symbols {
+		found := false
+		for _, existSymbol := range existingSymbols {
+			if reqsymbol == existSymbol {
+				found = true
+				break
+			}
+		}
+		if !found {
+			allExist = false
+			break
+		}
+	}
+	if allExist {
 		return uc.repo.GetPricesLast(ctx, symbols)
 	}
 
@@ -45,10 +59,6 @@ func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]
 	apiPrices, err := uc.externalAPI.GetRealTimePrices(ctx, symbols)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get prices from API: %w", err)
-	}
-
-	if len(apiPrices) != len(symbols) {
-		log.Printf("INFO: requested %d currencies, but API returned only %d. Some currencies may not exist.", len(symbols), len(apiPrices))
 	}
 
 	// Сохраняем цены (репозиторий сам разберётся с добавлением валют)

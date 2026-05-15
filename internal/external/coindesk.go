@@ -3,96 +3,76 @@ package external
 import (
 	"context"
 	"encoding/json"
-	"final/internal/entity"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"strings"
-	"time"
-)
 
-type coinDeskResponse struct {
-	USD float64 `json:"USD"`
-}
+	"final/internal/config"
+	"final/internal/entity"
+)
 
 type CoinDeskClient struct {
 	httpClient *http.Client
 	baseURL    string
+	relaxed    bool
+	tsyms      string
 }
 
-func NewCoinDeskClient() *CoinDeskClient {
+func NewCoinDeskClient(cfg *config.Config) *CoinDeskClient {
+	if cfg == nil {
+		cfg = config.Load()
+	}
 	return &CoinDeskClient{
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: cfg.ExternalAPITimeout,
 		},
-		baseURL: "https://min-api.cryptocompare.com",
+		baseURL: cfg.ExternalAPIBaseURL,
+		relaxed: cfg.ExternalAPIRelaxed,
+		tsyms:   cfg.ExternalAPITSyms,
 	}
 }
 
 func (c *CoinDeskClient) GetRealTimePrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
-	var result []entity.Price
+	fsyms := strings.Join(symbols, ",")
+	url := fmt.Sprintf("%s/data/pricemulti?fsyms=%s&tsyms=%s&relaxedValidation=%v",
+		c.baseURL, fsyms, c.tsyms, c.relaxed)
 
-	for _, symbol := range symbols {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err() // ← исправлено
-		default:
-		}
-
-		url := fmt.Sprintf("%s/data/price?fsym=%s&tsyms=USD&relaxedValidation=true",
-			c.baseURL,
-			strings.ToUpper(symbol))
-
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			continue
-		}
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			log.Printf("WARN: failed to fetch price for %s: %v", symbol, err)
-			continue
-		}
-
-		if resp.StatusCode >= 500 {
-			resp.Body.Close()
-			return nil, fmt.Errorf("API server error for %s: %d", symbol, resp.StatusCode)
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			log.Printf("WARN: API returned %d for %s, body: %s", resp.StatusCode, symbol, string(body))
-			resp.Body.Close()
-			continue
-		}
-
-		var apiResponse coinDeskResponse
-		if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-			log.Printf("WARN: failed to decode response for %s: %v", symbol, err)
-			resp.Body.Close()
-			continue
-		}
-		resp.Body.Close()
-
-		usdPrice := apiResponse.USD
-		if usdPrice == 0 {
-			// цена 0 допустима, не пропускаем — но ты решила оставить проверку
-			// можешь убрать эту проверку, если хочешь
-			continue
-		}
-
-		newPrice, err := entity.NewPrice(strings.ToUpper(symbol), usdPrice)
-		if err != nil {
-			continue
-		}
-
-		result = append(result, *newPrice)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if len(result) == 0 {
-		return nil, fmt.Errorf("no prices found for any of the requested symbols")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error: %d", resp.StatusCode)
 	}
 
-	return result, nil
+	var data map[string]map[string]float64
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	var prices []entity.Price
+	for symbol, val := range data {
+		usd, ok := val["USD"]
+		if !ok {
+			continue
+		}
+		p, err := entity.NewPrice(symbol, usd)
+		if err != nil {
+			continue
+		}
+		prices = append(prices, *p)
+	}
+
+	if len(prices) == 0 {
+		return nil, fmt.Errorf("no prices found")
+	}
+
+	return prices, nil
 }

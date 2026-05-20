@@ -22,6 +22,21 @@ type ExternalAPI interface {
 	GetRealTimePrices(ctx context.Context, symbols []string) ([]entity.Price, error)
 }
 
+// NewPriceUseCase — конструктор
+func NewPriceUseCase(repo PriceRepository, api ExternalAPI) (*PriceUseCase, error) {
+	if repo == nil {
+		return nil, fmt.Errorf("PriceRepository cannot be nil")
+	}
+	if api == nil {
+		return nil, fmt.Errorf("ExternalAPI cannot be nil")
+	}
+	return &PriceUseCase{
+		repo:        repo,
+		externalAPI: api,
+	}, nil
+
+}
+
 // ========== БИЗНЕС-ЛОГИКА ==========
 
 type PriceUseCase struct {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"final/internal/config"
 	"final/internal/entity"
 
 	"github.com/Masterminds/squirrel"
@@ -16,20 +17,26 @@ type PriceRepositoryPostgres struct {
 	sq   squirrel.StatementBuilderType
 }
 
-func NewPriceRepositoryPostgres(pool *pgxpool.Pool) *PriceRepositoryPostgres {
+func NewPriceRepositoryPostgres(cfg *config.Config) (*PriceRepositoryPostgres, error) {
+	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBSSLMode)
+
+	pool, err := pgxpool.New(context.Background(), connString)
+	if err != nil {
+		return nil, fmt.Errorf("NewPriceRepositoryPostgres: failed to connect to database: %w", err)
+	}
+
 	return &PriceRepositoryPostgres{
 		pool: pool,
 		sq:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
-	}
+	}, nil
 }
 
-// BuildConnString собирает строку подключения из конфига
-func BuildConnString(host, port, user, password, dbname, sslmode string) string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		user, password, host, port, dbname, sslmode)
+// Close — закрывает пул соединений
+func (r *PriceRepositoryPostgres) Close() {
+	r.pool.Close()
 }
 
-// SavePrices — массовое сохранение цен
 func (r *PriceRepositoryPostgres) SavePrices(ctx context.Context, prices []entity.Price) error {
 	if len(prices) == 0 {
 		return nil
@@ -42,11 +49,15 @@ func (r *PriceRepositoryPostgres) SavePrices(ctx context.Context, prices []entit
 
 	sql, args, err := builder.ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build insert: %w", err)
+		return fmt.Errorf("SavePrices: failed to build SQL query: %w", err)
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)
-	return err
+	if err != nil {
+		return fmt.Errorf("SavePrices: failed to execute insert for %d prices: %w", len(prices), err)
+	}
+
+	return nil
 }
 
 // GetPricesLast — последние цены для списка валют
@@ -58,12 +69,12 @@ func (r *PriceRepositoryPostgres) GetPricesLast(ctx context.Context, symbols []s
 		OrderBy("symbol", "created_at DESC").
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build query: %w", err)
+		return nil, fmt.Errorf("GetPricesLast: failed to build SQL query: %w", err)
 	}
 
 	rows, err := r.pool.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetPricesLast: failed to query prices for symbols %v: %w", symbols, err)
 	}
 	defer rows.Close()
 
@@ -71,28 +82,57 @@ func (r *PriceRepositoryPostgres) GetPricesLast(ctx context.Context, symbols []s
 	for rows.Next() {
 		var p entity.Price
 		if err := rows.Scan(&p.Symbol, &p.Price, &p.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("GetPricesLast: failed to scan row: %w", err)
 		}
 		result = append(result, p)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetPricesLast: rows iteration error: %w", err)
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("GetPricesLast: no prices found for symbols %v", symbols)
+	}
+
 	return result, nil
 }
 
-// GetMinPrices — минимальные цены для списка валют
-func (r *PriceRepositoryPostgres) GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
-	sql, args, err := r.sq.
-		Select("DISTINCT ON (symbol) symbol", "price", "created_at").
-		From("prices").
-		Where(squirrel.Eq{"symbol": symbols}).
-		OrderBy("symbol", "price ASC", "created_at DESC").
-		ToSql()
+// GetAllSymbols возвращает все символы, которые есть в таблице prices
+func (r *PriceRepositoryPostgres) GetAllSymbols(ctx context.Context) ([]string, error) {
+	rows, err := r.pool.Query(ctx, "SELECT DISTINCT symbol FROM prices ORDER BY symbol")
 	if err != nil {
-		return nil, fmt.Errorf("failed to build query: %w", err)
+		return nil, fmt.Errorf("GetAllSymbols: failed to query symbols: %w", err)
+	}
+	defer rows.Close()
+
+	var symbols []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("GetAllSymbols: failed to scan row: %w", err)
+		}
+		symbols = append(symbols, s)
 	}
 
-	rows, err := r.pool.Query(ctx, sql, args...)
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllSymbols: rows iteration error: %w", err)
+	}
+
+	return symbols, nil
+}
+
+func (r *PriceRepositoryPostgres) GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
+	sql := `
+        SELECT symbol, MIN(price) as price, MIN(created_at) as created_at
+        FROM prices
+        WHERE symbol = ANY($1)
+        GROUP BY symbol
+    `
+
+	rows, err := r.pool.Query(ctx, sql, symbols)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetMinPrices: failed to query min prices for symbols %v: %w", symbols, err)
 	}
 	defer rows.Close()
 
@@ -100,28 +140,34 @@ func (r *PriceRepositoryPostgres) GetMinPrices(ctx context.Context, symbols []st
 	for rows.Next() {
 		var p entity.Price
 		if err := rows.Scan(&p.Symbol, &p.Price, &p.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("GetMinPrices: failed to scan row: %w", err)
 		}
 		result = append(result, p)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetMinPrices: rows iteration error: %w", err)
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("GetMinPrices: no min prices found for symbols %v", symbols)
+	}
+
 	return result, nil
 }
 
 // GetMaxPrices — максимальные цены для списка валют
 func (r *PriceRepositoryPostgres) GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
-	sql, args, err := r.sq.
-		Select("DISTINCT ON (symbol) symbol", "price", "created_at").
-		From("prices").
-		Where(squirrel.Eq{"symbol": symbols}).
-		OrderBy("symbol", "price DESC", "created_at DESC").
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build query: %w", err)
-	}
+	sql := `
+        SELECT symbol, MAX(price) as price, MAX(created_at) as created_at
+        FROM prices
+        WHERE symbol = ANY($1)
+        GROUP BY symbol
+    `
 
-	rows, err := r.pool.Query(ctx, sql, args...)
+	rows, err := r.pool.Query(ctx, sql, symbols)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetMaxPrices: failed to query max prices for symbols %v: %w", symbols, err)
 	}
 	defer rows.Close()
 
@@ -129,10 +175,19 @@ func (r *PriceRepositoryPostgres) GetMaxPrices(ctx context.Context, symbols []st
 	for rows.Next() {
 		var p entity.Price
 		if err := rows.Scan(&p.Symbol, &p.Price, &p.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("GetMaxPrices: failed to scan row: %w", err)
 		}
 		result = append(result, p)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetMaxPrices: rows iteration error: %w", err)
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("GetMaxPrices: no max prices found for symbols %v", symbols)
+	}
+
 	return result, nil
 }
 
@@ -148,12 +203,12 @@ func (r *PriceRepositoryPostgres) GetExistingSymbols(ctx context.Context, symbol
 		Where(squirrel.Eq{"symbol": symbols}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build query: %w", err)
+		return nil, fmt.Errorf("GetExistingSymbols: failed to build SQL query: %w", err)
 	}
 
 	rows, err := r.pool.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetExistingSymbols: failed to query existing symbols for %v: %w", symbols, err)
 	}
 	defer rows.Close()
 
@@ -161,10 +216,11 @@ func (r *PriceRepositoryPostgres) GetExistingSymbols(ctx context.Context, symbol
 	for rows.Next() {
 		var s string
 		if err := rows.Scan(&s); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("GetExistingSymbols: failed to scan row: %w", err)
 		}
 		result = append(result, s)
 	}
+
 	return result, nil
 }
 
@@ -187,7 +243,50 @@ func (r *PriceRepositoryPostgres) AddCurrency(ctx context.Context, symbol string
 	return nil
 }
 
-// GetChangePercent — заглушка, будет реализовано позже
-func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols []string) ([]float64, error) {
-	return nil, fmt.Errorf("not implemented yet")
+// GetChangePercent возвращает изменение за час
+func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error) {
+	var result []entity.Price
+
+	for _, symbol := range symbols {
+		var currentPrice, hourAgoPrice float64
+
+		// Текущая цена
+		err := r.pool.QueryRow(ctx, `
+            SELECT price FROM prices 
+            WHERE symbol = $1 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        `, symbol).Scan(&currentPrice)
+		if err != nil {
+			return nil, fmt.Errorf("GetChangePercent: failed to get current price for %s: %w", symbol, err)
+		}
+
+		// Цена час назад
+		err = r.pool.QueryRow(ctx, `
+            SELECT price FROM prices 
+            WHERE symbol = $1 AND created_at <= NOW() - INTERVAL '1 hour'
+            ORDER BY created_at DESC 
+            LIMIT 1
+        `, symbol).Scan(&hourAgoPrice)
+		if err != nil {
+			return nil, fmt.Errorf("GetChangePercent: failed to get hour ago price for %s: %w", symbol, err)
+		}
+
+		if hourAgoPrice == 0 {
+			return nil, fmt.Errorf("GetChangePercent: hour ago price for %s is zero, skipping", symbol)
+		}
+
+		changePercent := ((currentPrice - hourAgoPrice) / hourAgoPrice) * 100
+
+		result = append(result, entity.Price{
+			Symbol: symbol,
+			Price:  changePercent,
+		})
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("GetChangePercent: no data for symbols %v", symbols)
+	}
+
+	return result, nil
 }

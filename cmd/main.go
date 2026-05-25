@@ -2,21 +2,25 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 
-	"final/internal/config"
-	"final/internal/external"
-	"final/internal/repository/postgres"
-	"final/internal/usecase"
+	"final/config"
+	external "final/internal/adapters/coindesk"
+	"final/internal/adapters/postgres"
+	usecase "final/internal/usecases"
 )
 
 func main() {
 	cfg := config.Load()
 
+	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBSSLMode)
+
 	// Создаём репозиторий (сам подключается к БД)
-	repo, err := postgres.NewPriceRepositoryPostgres(cfg)
+	repo, err := postgres.NewPriceRepositoryPostgres(connString)
 	if err != nil {
 		log.Fatalf("Failed to create repository: %v", err)
 	}
@@ -25,7 +29,10 @@ func main() {
 	log.Println("✅ Connected to PostgreSQL")
 
 	// Создаём клиент внешнего API
-	apiClient := external.NewCoinDeskClient(cfg)
+	apiClient, err := external.NewCoinDeskClient(cfg)
+	if err != nil {
+		log.Fatalf("Failed to creTE API client: %v", err)
+	}
 
 	// Создаём UseCase
 	uc, err := usecase.NewPriceUseCase(repo, apiClient)

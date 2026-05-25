@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
+	// External API
 	ExternalAPIBaseURL string
 	ExternalAPITimeout time.Duration
 	ExternalAPIRelaxed bool
 	ExternalAPITSyms   string
 
-	// PostgresSQL
+	// PostgreSQL
 	DBHost     string
 	DBPort     string
 	DBUser     string
@@ -25,17 +26,21 @@ type Config struct {
 
 func Load() *Config {
 	_ = godotenv.Load()
+
 	return &Config{
+		// External API
 		ExternalAPIBaseURL: getEnv("EXTERNAL_API_URL", "https://min-api.cryptocompare.com"),
 		ExternalAPITimeout: time.Duration(getEnvInt("EXTERNAL_API_TIMEOUT_SEC", 10)) * time.Second,
 		ExternalAPIRelaxed: getEnvBool("EXTERNAL_API_RELAXED", true),
 		ExternalAPITSyms:   getEnv("EXTERNAL_API_TSYMS", "USD"),
-		DBHost:             getEnv("DB_HOST", "localhost"),
-		DBPort:             getEnv("DB_PORT", "5432"),
-		DBUser:             getEnv("DB_USER", "postgres"),
-		DBPassword:         getEnv("DB_PASSWORD", "postgres"),
-		DBName:             getEnv("DB_NAME", "crypto"),
-		DBSSLMode:          getEnv("DB_SSL_MODE", "disbale"),
+
+		// PostgreSQL
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "macbook"),
+		DBPassword: getEnv("DB_PASSWORD", ""),
+		DBName:     getEnv("DB_NAME", "crypto"),
+		DBSSLMode:  getEnv("DB_SSL_MODE", "disable"),
 	}
 }
 

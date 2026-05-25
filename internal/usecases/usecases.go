@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"final/internal/entity"
+	entity "final/internal/entities"
 )
 
 // ========== ИНТЕРФЕЙСЫ ==========

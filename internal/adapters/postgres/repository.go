@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"final/internal/config"
-	"final/internal/entity"
+	entity "final/internal/entities"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,10 +16,7 @@ type PriceRepositoryPostgres struct {
 	sq   squirrel.StatementBuilderType
 }
 
-func NewPriceRepositoryPostgres(cfg *config.Config) (*PriceRepositoryPostgres, error) {
-	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBSSLMode)
-
+func NewPriceRepositoryPostgres(connString string) (*PriceRepositoryPostgres, error) {
 	pool, err := pgxpool.New(context.Background(), connString)
 	if err != nil {
 		return nil, fmt.Errorf("NewPriceRepositoryPostgres: failed to connect to database: %w", err)

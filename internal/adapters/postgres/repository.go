@@ -187,39 +187,6 @@ func (r *PriceRepositoryPostgres) GetMaxPrices(ctx context.Context, symbols []st
 	return result, nil
 }
 
-// GetExistingSymbols — возвращает символы, которые есть в таблице currencies
-func (r *PriceRepositoryPostgres) GetExistingSymbols(ctx context.Context, symbols []string) ([]string, error) {
-	if len(symbols) == 0 {
-		return []string{}, nil
-	}
-
-	sql, args, err := r.sq.
-		Select("DISTINCT symbol").
-		From("currencies").
-		Where(squirrel.Eq{"symbol": symbols}).
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("GetExistingSymbols: failed to build SQL query: %w", err)
-	}
-
-	rows, err := r.pool.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, fmt.Errorf("GetExistingSymbols: failed to query existing symbols for %v: %w", symbols, err)
-	}
-	defer rows.Close()
-
-	var result []string
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return nil, fmt.Errorf("GetExistingSymbols: failed to scan row: %w", err)
-		}
-		result = append(result, s)
-	}
-
-	return result, nil
-}
-
 // AddCurrency — добавляет новую валюту в таблицу currencies
 func (r *PriceRepositoryPostgres) AddCurrency(ctx context.Context, symbol string) error {
 	sql, args, err := r.sq.

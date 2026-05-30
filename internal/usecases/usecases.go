@@ -1,4 +1,4 @@
-package usecase
+package usecases
 
 import (
 	"context"
@@ -17,6 +17,7 @@ type PriceRepository interface {
 	GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error)
 	SavePrices(ctx context.Context, prices []entity.Price) error
 	GetAllSymbols(ctx context.Context) ([]string, error)
+	GetExistingSymbols(ctx context.Context, symbol []string) ([]string, error)
 }
 
 type ExternalAPI interface {
@@ -46,37 +47,62 @@ func NewPriceUseCase(repo PriceRepository, api ExternalAPI) (*PriceUseCase, erro
 
 // ========== БИЗНЕС-ЛОГИКА ==========
 
-// GetPricesLast — возвращает последние цены
 func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetPricesLast: symbols list cannot be empty")
 	}
 
-	// Проверяем, есть ли пустые строки
-	for i, s := range symbols {
-		if s == "" {
-			return nil, fmt.Errorf("GetPricesLast: empty symbol at index %d", i)
+	// 1. Получаем все валюты, которые есть в таблице currencies
+	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
+	if err != nil {
+		log.Printf("GetPricesLast: failed to get existing symbols: %v", err)
+		return nil, fmt.Errorf("GetPricesLast: failed to get existing symbols: %w", err)
+	}
+	log.Printf("GetPricesLast: existing symbols in DB: %v", existingSymbols)
+
+	// 2. Проверяем, все ли запрошенные валюты есть в currencies
+	allExist := true
+	for _, s := range symbols {
+		found := false
+		for _, e := range existingSymbols {
+			if s == e {
+				found = true
+				break
+			}
+		}
+		if !found {
+			allExist = false
+			log.Printf("GetPricesLast: symbol %s not found in currencies", s)
+			break
 		}
 	}
 
-	// 1. Пробуем получить из БД
-	prices, err := uc.repo.GetPricesLast(ctx, symbols)
-	if err == nil && len(prices) == len(symbols) {
+	// 3. Если все есть — берём цены из БД
+	if allExist {
+		log.Printf("GetPricesLast: all symbols found in currencies, fetching from DB")
+		prices, err := uc.repo.GetPricesLast(ctx, symbols)
+		if err != nil {
+			log.Printf("GetPricesLast: DB query failed: %v", err)
+			return nil, fmt.Errorf("GetPricesLast: failed to get prices from DB: %w", err)
+		}
+		log.Printf("GetPricesLast: returning %d prices from DB", len(prices))
 		return prices, nil
 	}
-	if err != nil {
-		log.Printf("GetPricesLast: DB query failed: %v", err)
-	}
 
-	// 2. Если нет — идём в API
+	// 4. Если нет — идём в API за всеми
+	log.Printf("GetPricesLast: fetching from external API for symbols: %v", symbols)
 	apiPrices, err := uc.externalAPI.GetRealTimePrices(ctx, symbols)
 	if err != nil {
+		log.Printf("GetPricesLast: API failed: %v", err)
 		return nil, fmt.Errorf("GetPricesLast: failed to get prices from API: %w", err)
 	}
+	log.Printf("GetPricesLast: API returned %d prices", len(apiPrices))
 
-	// 3. Сохраняем в БД
+	// 5. Сохраняем в БД
 	if err := uc.repo.SavePrices(ctx, apiPrices); err != nil {
 		log.Printf("GetPricesLast: WARNING: failed to save prices to DB: %v", err)
+	} else {
+		log.Printf("GetPricesLast: successfully saved %d prices to DB", len(apiPrices))
 	}
 
 	return apiPrices, nil
@@ -88,9 +114,9 @@ func (uc *PriceUseCase) GetMinPrices(ctx context.Context, symbols []string) ([]e
 		return nil, fmt.Errorf("GetMinPrices: symbols list cannot be empty")
 	}
 
-	for i, s := range symbols {
+	for _, s := range symbols {
 		if s == "" {
-			return nil, fmt.Errorf("GetMinPrices: empty symbol at index %d", i)
+			return nil, fmt.Errorf("GetMinPrices: empty symbol")
 		}
 	}
 
@@ -112,9 +138,9 @@ func (uc *PriceUseCase) GetMaxPrices(ctx context.Context, symbols []string) ([]e
 		return nil, fmt.Errorf("GetMaxPrices: symbols list cannot be empty")
 	}
 
-	for i, s := range symbols {
+	for _, s := range symbols {
 		if s == "" {
-			return nil, fmt.Errorf("GetMaxPrices: empty symbol at index %d", i)
+			return nil, fmt.Errorf("GetMaxPrices: empty symbol")
 		}
 	}
 
@@ -136,9 +162,9 @@ func (uc *PriceUseCase) GetChangePercent(ctx context.Context, symbols []string) 
 		return nil, fmt.Errorf("GetChangePercent: symbols list cannot be empty")
 	}
 
-	for i, s := range symbols {
+	for _, s := range symbols {
 		if s == "" {
-			return nil, fmt.Errorf("GetChangePercent: empty symbol at index %d", i)
+			return nil, fmt.Errorf("GetChangePercent: empty symbol")
 		}
 	}
 

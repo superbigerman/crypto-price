@@ -33,11 +33,31 @@ func (r *PriceRepositoryPostgres) Close() {
 	r.pool.Close()
 }
 
+// SavePrices — массовое сохранение цен с проверкой валют
 func (r *PriceRepositoryPostgres) SavePrices(ctx context.Context, prices []entity.Price) error {
 	if len(prices) == 0 {
 		return nil
 	}
 
+	// 1. Проверяем и добавляем валюты в таблицу currencies
+	for _, p := range prices {
+		// Проверяем, существует ли валюта
+		var exists bool
+		err := r.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM currencies WHERE symbol = $1)", p.Symbol).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("SavePrices: failed to check currency %s: %w", p.Symbol, err)
+		}
+
+		// Если нет — добавляем
+		if !exists {
+			_, err := r.pool.Exec(ctx, "INSERT INTO currencies (symbol, name, created_at) VALUES ($1, $2, NOW())", p.Symbol, p.Symbol)
+			if err != nil {
+				return fmt.Errorf("SavePrices: failed to insert currency %s: %w", p.Symbol, err)
+			}
+		}
+	}
+
+	// 2. Сохраняем цены
 	builder := r.sq.Insert("prices").Columns("symbol", "price", "created_at")
 	for _, p := range prices {
 		builder = builder.Values(p.Symbol, p.Price, p.CreatedAt)
@@ -45,12 +65,12 @@ func (r *PriceRepositoryPostgres) SavePrices(ctx context.Context, prices []entit
 
 	sql, args, err := builder.ToSql()
 	if err != nil {
-		return fmt.Errorf("SavePrices: failed to build SQL query: %w", err)
+		return fmt.Errorf("SavePrices: failed to build insert: %w", err)
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("SavePrices: failed to execute insert for %d prices: %w", len(prices), err)
+		return fmt.Errorf("SavePrices: failed to execute insert: %w", err)
 	}
 
 	return nil
@@ -249,6 +269,39 @@ func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols 
 
 	if len(result) == 0 {
 		return nil, fmt.Errorf("GetChangePercent: no data for symbols %v", symbols)
+	}
+
+	return result, nil
+}
+
+// GetExistingSymbols — возвращает только те символы, которые есть в таблице currencies
+func (r *PriceRepositoryPostgres) GetExistingSymbols(ctx context.Context, symbols []string) ([]string, error) {
+	if len(symbols) == 0 {
+		return []string{}, nil
+	}
+
+	sql, args, err := r.sq.
+		Select("DISTINCT symbol").
+		From("currencies").
+		Where(squirrel.Eq{"symbol": symbols}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("GetExistingSymbols: failed to build query: %w", err)
+	}
+
+	rows, err := r.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("GetExistingSymbols: failed to query: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("GetExistingSymbols: failed to scan: %w", err)
+		}
+		result = append(result, s)
 	}
 
 	return result, nil

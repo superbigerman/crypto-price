@@ -1,4 +1,4 @@
-package external
+package coindesk
 
 import (
 	"context"
@@ -41,17 +41,20 @@ func (c *CoinDeskClient) GetRealTimePrices(ctx context.Context, symbols []string
 		return nil, fmt.Errorf("GetRealTimePrices: symbols list cannot be empty")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET",
-		fmt.Sprintf("%s/data/pricemulti?%s",
-			c.baseURL,
-			url.Values{
-				"fsyms":             {strings.Join(symbols, ",")},
-				"tsyms":             {c.tsyms},
-				"relaxedValidation": {fmt.Sprintf("%v", c.relaxed)},
-			}.Encode(),
-		), nil)
+	rawURL, err := url.Parse(c.baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("GetRealTimePrices: failed to create request: %w", err)
+		return nil, fmt.Errorf("GetRealTimePrice: invalid base URL: %w", err)
+	}
+	rawURL.Path = "/datapricemulti"
+
+	query := rawURL.Query()
+	query.Set("tsyms", strings.Join(symbols, ","))
+	query.Set("tsyms", c.tsyms)
+	query.Set("relaxedValidation", fmt.Sprintf("%v", c.relaxed))
+	rawURL.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("GetRealTimePrice: failed to create request: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)

@@ -6,17 +6,20 @@ import (
 	"log"
 
 	entity "final/internal/entities"
+	"final/internal/ports"
 )
+
+var _ ports.PriceUseCase = (*PriceUseCase)(nil)
 
 // ========== КОНСТРУКТОР ==========
 
 type PriceUseCase struct {
-	repo        PriceRepository
-	externalAPI ExternalAPI
+	repo        ports.PriceRepository
+	externalAPI ports.Client
 }
 
 // NewPriceUseCase — конструктор
-func NewPriceUseCase(repo PriceRepository, api ExternalAPI) (*PriceUseCase, error) {
+func NewPriceUseCase(repo ports.PriceRepository, api ports.Client) (ports.PriceUseCase, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("NewPriceUseCase: PriceRepository cannot be nil")
 	}

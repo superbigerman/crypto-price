@@ -10,7 +10,8 @@ import (
 	"final/config"
 	"final/internal/adapters/client/coindesk"
 	"final/internal/adapters/repository/postgres"
-	"final/internal/ports/chi"
+	portchi "final/internal/ports/chi"
+
 	"final/internal/usecases"
 )
 
@@ -31,12 +32,12 @@ func main() {
 		log.Fatalf("Failed to create API client: %v", err)
 	}
 
-	uc, err := usecases.NewPriceUseCase(repo, apiClient)
+	priceUC, err := usecases.NewPriceUseCase(repo, apiClient)
 	if err != nil {
 		log.Fatalf("Failed to create usecase: %v", err)
 	}
 
-	router := chi.NewChiRouter()
+	router := portchi.NewChiRouter()
 
 	router.Get("/prices", func(w http.ResponseWriter, r *http.Request) {
 		symbolsParam := r.URL.Query().Get("symbols")
@@ -46,7 +47,7 @@ func main() {
 		}
 		symbols := strings.Split(symbolsParam, ",")
 
-		prices, err := uc.GetPricesLast(r.Context(), symbols)
+		prices, err := priceUC.GetPricesLast(r.Context(), symbols)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -64,7 +65,7 @@ func main() {
 		}
 		symbols := strings.Split(symbolsParam, ",")
 
-		prices, err := uc.GetMinPrices(r.Context(), symbols)
+		prices, err := priceUC.GetMinPrices(r.Context(), symbols)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -82,7 +83,7 @@ func main() {
 		}
 		symbols := strings.Split(symbolsParam, ",")
 
-		prices, err := uc.GetMaxPrices(r.Context(), symbols)
+		prices, err := priceUC.GetMaxPrices(r.Context(), symbols)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -100,7 +101,7 @@ func main() {
 		}
 		symbols := strings.Split(symbolsParam, ",")
 
-		changes, err := uc.GetChangePercent(r.Context(), symbols)
+		changes, err := priceUC.GetChangePercent(r.Context(), symbols)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

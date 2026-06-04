@@ -6,10 +6,13 @@ import (
 	"time"
 
 	entity "final/internal/entities"
+	"final/internal/ports"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var _ ports.PriceRepository = (*PriceRepositoryPostgres)(nil)
 
 type PriceRepositoryPostgres struct {
 	pool *pgxpool.Pool

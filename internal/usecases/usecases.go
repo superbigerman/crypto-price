@@ -6,90 +6,62 @@ import (
 	"log"
 
 	entity "final/internal/entities"
-	"final/internal/ports"
+	"final/internal/ports/input"
+	"final/internal/ports/output"
 )
 
-var _ ports.PriceUseCase = (*PriceUseCase)(nil)
+var _ input.PriceService = (*PriceUseCase)(nil)
 
 // ========== КОНСТРУКТОР ==========
 
 type PriceUseCase struct {
-	repo        ports.PriceRepository
-	externalAPI ports.Client
+	repo     output.PriceRepository
+	provider output.PriceClient
 }
 
 // NewPriceUseCase — конструктор
-func NewPriceUseCase(repo ports.PriceRepository, api ports.Client) (ports.PriceUseCase, error) {
+func NewPriceUseCase(repo output.PriceRepository, provider output.PriceProvider) (input.PriceService, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("NewPriceUseCase: PriceRepository cannot be nil")
 	}
-	if api == nil {
-		return nil, fmt.Errorf("NewPriceUseCase: ExternalAPI cannot be nil")
+	if provider == nil {
+		return nil, fmt.Errorf("NewPriceUseCase: PriceProvider cannot be nil")
 	}
 	return &PriceUseCase{
-		repo:        repo,
-		externalAPI: api,
+		repo:     repo,
+		provider: provider,
 	}, nil
 }
 
 // ========== БИЗНЕС-ЛОГИКА ==========
 
 func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error) {
-	if len(symbols) == 0 {
-		return nil, fmt.Errorf("GetPricesLast: symbols list cannot be empty")
-	}
-
-	// 1. Получаем все валюты, которые есть в таблице currencies
+	// 1. Получаем существующие валюты
 	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
 	if err != nil {
-		log.Printf("GetPricesLast: failed to get existing symbols: %v", err)
-		return nil, fmt.Errorf("GetPricesLast: failed to get existing symbols: %w", err)
-	}
-	log.Printf("GetPricesLast: existing symbols in DB: %v", existingSymbols)
-
-	// 2. Проверяем, все ли запрошенные валюты есть в currencies
-	allExist := true
-	for _, s := range symbols {
-		found := false
-		for _, e := range existingSymbols {
-			if s == e {
-				found = true
-				break
-			}
-		}
-		if !found {
-			allExist = false
-			log.Printf("GetPricesLast: symbol %s not found in currencies", s)
-			break
-		}
+		return nil, err
 	}
 
-	// 3. Если все есть — берём цены из БД
-	if allExist {
-		log.Printf("GetPricesLast: all symbols found in currencies, fetching from DB")
-		prices, err := uc.repo.GetPricesLast(ctx, symbols)
-		if err != nil {
-			log.Printf("GetPricesLast: DB query failed: %v", err)
-			return nil, fmt.Errorf("GetPricesLast: failed to get prices from DB: %w", err)
-		}
-		log.Printf("GetPricesLast: returning %d prices from DB", len(prices))
-		return prices, nil
+	// 2. Если все есть — берём из БД
+	if len(existingSymbols) == len(symbols) {
+		return uc.repo.GetPricesLast(ctx, symbols)
 	}
 
-	// 4. Если нет — идём в API за всеми
-	log.Printf("GetPricesLast: fetching from external API for symbols: %v", symbols)
-	apiPrices, err := uc.externalAPI.GetRealTimePrices(ctx, symbols)
+	// 3. Идём в API
+	apiPrices, err := uc.client.GetRealTimePrices(ctx, symbols)
 	if err != nil {
-		log.Printf("GetPricesLast: API failed: %v", err)
-		return nil, fmt.Errorf("GetPricesLast: failed to get prices from API: %w", err)
+		return nil, err
 	}
-	log.Printf("GetPricesLast: API returned %d prices", len(apiPrices))
 
-	// 5. Сохраняем в БД
+	// 4. Сохраняем новые ВАЛЮТЫ (отдельно!)
+	newSymbols := extractSymbols(apiPrices) // ["XRP", "SOL"...]
+	if err := uc.repo.AddCurrencies(ctx, newSymbols); err != nil {
+		log.Printf("WARNING: failed to add currencies: %v", err)
+	}
+
+	// 5. Сохраняем ЦЕНЫ (отдельно!)
 	if err := uc.repo.SavePrices(ctx, apiPrices); err != nil {
-		log.Printf("GetPricesLast: WARNING: failed to save prices to DB: %v", err)
-	} else {
-		log.Printf("GetPricesLast: successfully saved %d prices to DB", len(apiPrices))
+		log.Printf("WARNING: failed to save prices: %v", err)
 	}
 
 	return apiPrices, nil
@@ -165,4 +137,13 @@ func (uc *PriceUseCase) GetChangePercent(ctx context.Context, symbols []string) 
 	}
 
 	return uc.repo.GetChangePercent(ctx, existingSymbols)
+}
+
+// extractSymbols извлекает символы валют из слайса цен
+func extractSymbols(prices []entity.Price) []string {
+	symbols := make([]string, len(prices))
+	for i, p := range prices {
+		symbols[i] = p.Symbol
+	}
+	return symbols
 }

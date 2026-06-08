@@ -10,10 +10,10 @@ import (
 
 	"final/config"
 	entity "final/internal/entities"
-	"final/internal/ports"
+	"final/internal/ports/output"
 )
 
-var _ ports.Client = (*CoinDeskClient)(nil)
+var _ output.PriceProvider = (*CoinDeskClient)(nil)
 
 type CoinDeskClient struct {
 	httpClient *http.Client

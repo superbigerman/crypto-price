@@ -6,13 +6,13 @@ import (
 	"time"
 
 	entity "final/internal/entities"
-	"final/internal/ports"
+	"final/internal/ports/output"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var _ ports.PriceRepository = (*PriceRepositoryPostgres)(nil)
+var _ output.PriceRepository = (*PriceRepositoryPostgres)(nil)
 
 type PriceRepositoryPostgres struct {
 	pool *pgxpool.Pool
@@ -42,25 +42,7 @@ func (r *PriceRepositoryPostgres) SavePrices(ctx context.Context, prices []entit
 		return nil
 	}
 
-	// 1. Проверяем и добавляем валюты в таблицу currencies
-	for _, p := range prices {
-		// Проверяем, существует ли валюта
-		var exists bool
-		err := r.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM currencies WHERE symbol = $1)", p.Symbol).Scan(&exists)
-		if err != nil {
-			return fmt.Errorf("SavePrices: failed to check currency %s: %w", p.Symbol, err)
-		}
-
-		// Если нет — добавляем
-		if !exists {
-			_, err := r.pool.Exec(ctx, "INSERT INTO currencies (symbol, name, created_at) VALUES ($1, $2, NOW())", p.Symbol, p.Symbol)
-			if err != nil {
-				return fmt.Errorf("SavePrices: failed to insert currency %s: %w", p.Symbol, err)
-			}
-		}
-	}
-
-	// 2. Сохраняем цены
+	// Только INSERT в prices, без проверки currencies!
 	builder := r.sq.Insert("prices").Columns("symbol", "price", "created_at")
 	for _, p := range prices {
 		builder = builder.Values(p.Symbol, p.Price, p.CreatedAt)
@@ -72,11 +54,7 @@ func (r *PriceRepositoryPostgres) SavePrices(ctx context.Context, prices []entit
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)
-	if err != nil {
-		return fmt.Errorf("SavePrices: failed to execute insert: %w", err)
-	}
-
-	return nil
+	return err
 }
 
 // GetPricesLast — последние цены для списка валют
@@ -211,14 +189,19 @@ func (r *PriceRepositoryPostgres) GetMaxPrices(ctx context.Context, symbols []st
 }
 
 // AddCurrency — добавляет новую валюту в таблицу currencies
-func (r *PriceRepositoryPostgres) AddCurrency(ctx context.Context, symbol string) error {
-	sql, args, err := r.sq.
-		Insert("currencies").
-		Columns("symbol", "name", "created_at").
-		Values(symbol, symbol, time.Now()).
-		ToSql()
+func (r *PriceRepositoryPostgres) AddCurrencies(ctx context.Context, symbols []string) error {
+	if len(symbols) == 0 {
+		return nil
+	}
+
+	builder := r.sq.Insert("currencies").Columns("symbol", "name", "created_at")
+	for _, s := range symbols {
+		builder = builder.Values(s, s, time.Now())
+	}
+
+	sql, args, err := builder.ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build insert: %w", err)
+		return fmt.Errorf("AddCurrencies: failed to build insert: %w", err)
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)

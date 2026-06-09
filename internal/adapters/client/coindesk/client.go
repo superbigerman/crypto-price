@@ -13,7 +13,7 @@ import (
 	"final/internal/ports/output"
 )
 
-var _ output.PriceProvider = (*CoinDeskClient)(nil)
+var _ output.PriceClient = (*CoinDeskClient)(nil)
 
 type CoinDeskClient struct {
 	httpClient *http.Client

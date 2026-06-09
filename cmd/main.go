@@ -8,8 +8,8 @@ import (
 	"final/config"
 	"final/internal/adapters/client/coindesk"
 	httpadapter "final/internal/adapters/http"
-	chiadapter "final/internal/adapters/http/chi"
 	"final/internal/adapters/repository/postgres"
+	chiadapter "final/internal/ports/chi"
 	"final/internal/usecases"
 )
 

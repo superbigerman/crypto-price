@@ -7,6 +7,6 @@ import (
 )
 
 // PriceProvider — выходной порт (driven): внешний источник актуальных цен.
-type PriceProvider interface {
+type PriceClient interface {
 	GetRealTimePrices(ctx context.Context, symbols []string) ([]entity.Price, error)
 }

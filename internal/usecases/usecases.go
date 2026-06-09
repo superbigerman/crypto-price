@@ -15,12 +15,12 @@ var _ input.PriceService = (*PriceUseCase)(nil)
 // ========== КОНСТРУКТОР ==========
 
 type PriceUseCase struct {
-	repo     output.PriceRepository
-	provider output.PriceClient
+	repo   output.PriceRepository
+	client output.PriceClient
 }
 
 // NewPriceUseCase — конструктор
-func NewPriceUseCase(repo output.PriceRepository, provider output.PriceProvider) (input.PriceService, error) {
+func NewPriceUseCase(repo output.PriceRepository, provider output.PriceClient) (input.PriceService, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("NewPriceUseCase: PriceRepository cannot be nil")
 	}
@@ -28,8 +28,8 @@ func NewPriceUseCase(repo output.PriceRepository, provider output.PriceProvider)
 		return nil, fmt.Errorf("NewPriceUseCase: PriceProvider cannot be nil")
 	}
 	return &PriceUseCase{
-		repo:     repo,
-		provider: provider,
+		repo:   repo,
+		client: provider,
 	}, nil
 }
 

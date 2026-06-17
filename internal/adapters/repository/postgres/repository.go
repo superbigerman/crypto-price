@@ -6,13 +6,10 @@ import (
 	"time"
 
 	entity "final/internal/entities"
-	"final/internal/ports/output"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-var _ output.PriceRepository = (*PriceRepositoryPostgres)(nil)
 
 type PriceRepositoryPostgres struct {
 	pool *pgxpool.Pool
@@ -22,12 +19,11 @@ type PriceRepositoryPostgres struct {
 func NewPriceRepositoryPostgres(connString string) (*PriceRepositoryPostgres, error) {
 	pool, err := pgxpool.New(context.Background(), connString)
 	if err != nil {
-		return nil, fmt.Errorf("NewPriceRepositoryPostgres: failed to connect to database: %w", err)
+		return nil, err
 	}
-
 	return &PriceRepositoryPostgres{
 		pool: pool,
-		sq:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		sq:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar), // ✅ добавить!
 	}, nil
 }
 

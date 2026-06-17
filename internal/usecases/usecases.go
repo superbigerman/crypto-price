@@ -6,36 +6,27 @@ import (
 	"log"
 
 	entity "final/internal/entities"
-	"final/internal/ports/input"
-	"final/internal/ports/output"
 )
 
-var _ input.PriceService = (*PriceUseCase)(nil)
-
-// ========== КОНСТРУКТОР ==========
-
-type PriceUseCase struct {
-	repo   output.PriceRepository
-	client output.PriceClient
+type PriceUseCaseImpl struct {
+	repo   PriceRepository
+	client PriceClient
 }
 
-// NewPriceUseCase — конструктор
-func NewPriceUseCase(repo output.PriceRepository, provider output.PriceClient) (input.PriceService, error) {
+func NewPriceUseCase(repo PriceRepository, client PriceClient) (PriceUseCase, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("NewPriceUseCase: PriceRepository cannot be nil")
 	}
-	if provider == nil {
-		return nil, fmt.Errorf("NewPriceUseCase: PriceProvider cannot be nil")
+	if client == nil {
+		return nil, fmt.Errorf("NewPriceUseCase: PriceClient cannot be nil")
 	}
-	return &PriceUseCase{
+	return &PriceUseCaseImpl{
 		repo:   repo,
-		client: provider,
+		client: client,
 	}, nil
 }
 
-// ========== БИЗНЕС-ЛОГИКА ==========
-
-func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error) {
+func (uc *PriceUseCaseImpl) GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	// 1. Получаем существующие валюты
 	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
 	if err != nil {
@@ -53,13 +44,7 @@ func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]
 		return nil, err
 	}
 
-	// 4. Сохраняем новые ВАЛЮТЫ (отдельно!)
-	newSymbols := extractSymbols(apiPrices) // ["XRP", "SOL"...]
-	if err := uc.repo.AddCurrencies(ctx, newSymbols); err != nil {
-		log.Printf("WARNING: failed to add currencies: %v", err)
-	}
-
-	// 5. Сохраняем ЦЕНЫ (отдельно!)
+	// 4. Сохраняем цены
 	if err := uc.repo.SavePrices(ctx, apiPrices); err != nil {
 		log.Printf("WARNING: failed to save prices: %v", err)
 	}
@@ -67,8 +52,7 @@ func (uc *PriceUseCase) GetPricesLast(ctx context.Context, symbols []string) ([]
 	return apiPrices, nil
 }
 
-// GetMinPrices — возвращает минимальные цены
-func (uc *PriceUseCase) GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
+func (uc *PriceUseCaseImpl) GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetMinPrices: symbols list cannot be empty")
 	}
@@ -91,8 +75,7 @@ func (uc *PriceUseCase) GetMinPrices(ctx context.Context, symbols []string) ([]e
 	return uc.repo.GetMinPrices(ctx, existingSymbols)
 }
 
-// GetMaxPrices — возвращает максимальные цены
-func (uc *PriceUseCase) GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
+func (uc *PriceUseCaseImpl) GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetMaxPrices: symbols list cannot be empty")
 	}
@@ -115,8 +98,7 @@ func (uc *PriceUseCase) GetMaxPrices(ctx context.Context, symbols []string) ([]e
 	return uc.repo.GetMaxPrices(ctx, existingSymbols)
 }
 
-// GetChangePercent — возвращает изменение за час
-func (uc *PriceUseCase) GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error) {
+func (uc *PriceUseCaseImpl) GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetChangePercent: symbols list cannot be empty")
 	}
@@ -137,13 +119,4 @@ func (uc *PriceUseCase) GetChangePercent(ctx context.Context, symbols []string) 
 	}
 
 	return uc.repo.GetChangePercent(ctx, existingSymbols)
-}
-
-// extractSymbols извлекает символы валют из слайса цен
-func extractSymbols(prices []entity.Price) []string {
-	symbols := make([]string, len(prices))
-	for i, p := range prices {
-		symbols[i] = p.Symbol
-	}
-	return symbols
 }

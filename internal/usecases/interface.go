@@ -5,7 +5,7 @@ import (
 	entity "final/internal/entities"
 )
 
-// PriceRepository — уже есть
+// PriceRepository
 type PriceRepository interface {
 	SavePrices(ctx context.Context, prices []entity.Price) error
 	GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error)
@@ -17,7 +17,7 @@ type PriceRepository interface {
 	GetExistingSymbols(ctx context.Context, symbols []string) ([]string, error)
 }
 
-// PriceUseCase — входящий порт (добавить!)
+// PriceUseCase
 type PriceUseCase interface {
 	GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error)
 	GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error)
@@ -25,7 +25,7 @@ type PriceUseCase interface {
 	GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error)
 }
 
-// PriceClient — интерфейс для внешнего API (CoinDesk)
+// PriceClient
 type PriceClient interface {
 	GetRealTimePrices(ctx context.Context, symbols []string) ([]entity.Price, error)
 }

@@ -3,26 +3,18 @@ package chi
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
-
-	entity "final/internal/entities"
 
 	"github.com/go-chi/chi/v5"
 )
 
 // ========== ИНТЕРФЕЙС ==========
-
-type PriceUseCase interface {
-	GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error)
-	GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error)
-	GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error)
-	GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error)
-}
 
 // ========== ХЕНДЛЕР ==========
 
@@ -74,21 +66,6 @@ func parseAndValidateSymbols(r *http.Request) ([]string, error) {
 	return validSymbols, nil
 }
 
-// writeSuccess отправляет успешный JSON-ответ с метаданными
-func writeSuccess(w http.ResponseWriter, data interface{}, meta map[string]interface{}) {
-	response := map[string]interface{}{
-		"data": data,
-		"meta": meta,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("ERROR: failed to encode response: %v", err)
-	}
-}
-
 // writeError отправляет JSON-ошибку
 func writeError(w http.ResponseWriter, status int, errorType string, message string) {
 	w.Header().Set("Content-Type", "application/json")
@@ -99,183 +76,119 @@ func writeError(w http.ResponseWriter, status int, errorType string, message str
 	})
 }
 
-// handleServiceError обрабатывает ошибки от бизнес-логики
+// handleServiceError — логирует ошибку и возвращает безопасный ответ клиенту
 func handleServiceError(w http.ResponseWriter, err error) {
-	// Логируем реальную ошибку
-	log.Printf("ERROR: %v", err)
-
-	switch {
-	case errors.Is(err, context.DeadlineExceeded):
-		writeError(w, http.StatusGatewayTimeout, "request timeout",
-			"upstream service did not respond in time")
-	case strings.Contains(err.Error(), "not found"):
-		writeError(w, http.StatusNotFound, "not found", err.Error())
-	default:
-		writeError(w, http.StatusInternalServerError, "internal server error",
-			"failed to process request")
-	}
+	log.Printf("ERROR: %v", err)                                           // детали для разработчика
+	http.Error(w, "internal server error", http.StatusInternalServerError) // безопасно для клиента
 }
 
 // ========== GET /prices ==========
 
-// ========== GET /prices ==========
-
 func (h *PriceHandler) GetLastPrices(w http.ResponseWriter, r *http.Request) {
-	// 1. Проверка метода HTTP
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed",
-			"only GET method is supported")
-		return
-	}
-
-	// 2. Парсинг и валидация symbols
+	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request", err.Error())
 		return
 	}
 
-	// 3. Таймаут контекста
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	// 2. Таймаут контекста из .env
+	timeout, _ := strconv.Atoi(os.Getenv("SERVER_TIMEOUT_SEC"))
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	// 4. Вызов бизнес-логики
+	// 3. Вызов бизнес-логики
 	prices, err := h.useCase.GetPricesLast(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
-	// 5. Проверка пустого ответа
-	if len(prices) == 0 {
-		writeError(w, http.StatusNotFound, "no data",
-			fmt.Sprintf("no prices found for symbols: %v", validSymbols))
-		return
-	}
-
-	// 6. Успешный ответ с метаданными
-	writeSuccess(w, prices, map[string]interface{}{
-		"count":        len(prices),
-		"symbols":      validSymbols,
-		"requested_at": time.Now().UTC().Format(time.RFC3339),
-	})
+	// 4. Успешный ответ
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(prices)
 }
 
 // ========== GET /min ==========
 
 func (h *PriceHandler) GetMinPrices(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed",
-			"only GET method is supported")
-		return
-	}
-
+	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request", err.Error())
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	// 2. Таймаут контекста из .env
+	timeout, _ := strconv.Atoi(os.Getenv("SERVER_TIMEOUT_SEC"))
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
+	// 3. Вызов бизнес-логики
 	prices, err := h.useCase.GetMinPrices(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
-	if len(prices) == 0 {
-		writeError(w, http.StatusNotFound, "no data",
-			fmt.Sprintf("no minimum prices found for symbols: %v", validSymbols))
-		return
-	}
-
-	writeSuccess(w, prices, map[string]interface{}{
-		"count":        len(prices),
-		"symbols":      validSymbols,
-		"type":         "minimum",
-		"requested_at": time.Now().UTC().Format(time.RFC3339),
-	})
+	// 4. Успешный ответ
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(prices)
 }
 
 // ========== GET /max ==========
 
 func (h *PriceHandler) GetMaxPrices(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed",
-			"only GET method is supported")
-		return
-	}
-
+	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request", err.Error())
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	// 2. Таймаут контекста из .env
+	timeout, _ := strconv.Atoi(os.Getenv("SERVER_TIMEOUT_SEC"))
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
+	// 3. Вызов бизнес-логики
 	prices, err := h.useCase.GetMaxPrices(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
-	if len(prices) == 0 {
-		writeError(w, http.StatusNotFound, "no data",
-			fmt.Sprintf("no maximum prices found for symbols: %v", validSymbols))
-		return
-	}
-
-	writeSuccess(w, prices, map[string]interface{}{
-		"count":        len(prices),
-		"symbols":      validSymbols,
-		"type":         "maximum",
-		"requested_at": time.Now().UTC().Format(time.RFC3339),
-	})
+	// 4. Успешный ответ
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(prices)
 }
 
 // ========== GET /change ==========
 
 func (h *PriceHandler) GetChangePrices(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed",
-			"only GET method is supported")
-		return
-	}
-
+	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request", err.Error())
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	// 2. Таймаут контекста из .env
+	timeout, _ := strconv.Atoi(os.Getenv("SERVER_TIMEOUT_SEC"))
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
+	// 3. Вызов бизнес-логики
 	changes, err := h.useCase.GetChangePercent(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
-	if len(changes) == 0 {
-		writeError(w, http.StatusNotFound, "no data",
-			fmt.Sprintf("no change data found for symbols: %v", validSymbols))
-		return
-	}
-
-	writeSuccess(w, changes, map[string]interface{}{
-		"count":        len(changes),
-		"symbols":      validSymbols,
-		"type":         "change_percent",
-		"requested_at": time.Now().UTC().Format(time.RFC3339),
-	})
+	// 4. Успешный ответ
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(changes)
 }
-
-// ========== РОУТЕР ==========
 
 type ChiRouter struct {
 	mux *chi.Mux
@@ -285,15 +198,10 @@ func NewChiRouter() *ChiRouter {
 	return &ChiRouter{mux: chi.NewRouter()}
 }
 
-func (r *ChiRouter) Get(pattern string, handler http.HandlerFunc) {
-	r.mux.Get(pattern, handler)
-}
-
+// ServeHTTP — оставляем, нужно для http.Handler
 func (r *ChiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
-
-// ========== ЗАПУСК ==========
 
 func RunServer(uc PriceUseCase) {
 	router := NewChiRouter()
@@ -302,11 +210,11 @@ func RunServer(uc PriceUseCase) {
 		log.Fatalf("Failed to create handler: %v", err)
 	}
 
-	// Цены
-	router.Get("/prices", handler.GetLastPrices)          // GET /prices?symbols=BTC,ETH
-	router.Get("/prices/min", handler.GetMinPrices)       // GET /prices/min?symbols=BTC,ETH
-	router.Get("/prices/max", handler.GetMaxPrices)       // GET /prices/max?symbols=BTC,ETH
-	router.Get("/prices/change", handler.GetChangePrices) // GET /prices/change?symbols=BTC,ETH
+	// Без обёртки Get, напрямую к mux
+	router.mux.Get("/get/prices/last", handler.GetLastPrices)
+	router.mux.Get("/get/prices/min", handler.GetMinPrices)
+	router.mux.Get("/get/prices/max", handler.GetMaxPrices)
+	router.mux.Get("/get/prices/percent", handler.GetChangePrices)
 
 	log.Println("🚀 Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", router))

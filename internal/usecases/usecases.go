@@ -13,7 +13,7 @@ type PriceUseCaseImpl struct {
 	client PriceClient
 }
 
-func NewPriceUseCase(repo PriceRepository, client PriceClient) (PriceUseCase, error) {
+func NewPriceUseCase(repo PriceRepository, client PriceClient) (*PriceUseCase, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("NewPriceUseCase: PriceRepository cannot be nil")
 	}

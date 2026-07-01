@@ -190,31 +190,17 @@ func (h *PriceHandler) GetChangePrices(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(changes)
 }
 
-type ChiRouter struct {
-	mux *chi.Mux
-}
-
-func NewChiRouter() *ChiRouter {
-	return &ChiRouter{mux: chi.NewRouter()}
-}
-
-// ServeHTTP — оставляем, нужно для http.Handler
-func (r *ChiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	r.mux.ServeHTTP(w, req)
-}
-
 func RunServer(uc PriceUseCase) {
-	router := NewChiRouter()
+	router := chi.NewRouter()
 	handler, err := NewPriceHandler(uc)
 	if err != nil {
 		log.Fatalf("Failed to create handler: %v", err)
 	}
 
-	// Без обёртки Get, напрямую к mux
-	router.mux.Get("/get/prices/last", handler.GetLastPrices)
-	router.mux.Get("/get/prices/min", handler.GetMinPrices)
-	router.mux.Get("/get/prices/max", handler.GetMaxPrices)
-	router.mux.Get("/get/prices/percent", handler.GetChangePrices)
+	router.Get("/get/prices/last", handler.GetLastPrices)
+	router.Get("/get/prices/min", handler.GetMinPrices)
+	router.Get("/get/prices/max", handler.GetMaxPrices)
+	router.Get("/get/prices/percent", handler.GetChangePrices)
 
 	log.Println("🚀 Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", router))

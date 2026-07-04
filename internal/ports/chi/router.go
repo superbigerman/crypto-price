@@ -14,21 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// ========== ИНТЕРФЕЙС ==========
-
-// ========== ХЕНДЛЕР ==========
-
-type PriceHandler struct {
-	useCase PriceUseCase
-}
-
-func NewPriceHandler(uc PriceUseCase) (*PriceHandler, error) {
-	if uc == nil {
-		return nil, fmt.Errorf("NewPriceHandler: useCase cannot be nil")
-	}
-	return &PriceHandler{useCase: uc}, nil
-}
-
 // ========== ОБЩИЕ ФУНКЦИИ ВАЛИДАЦИИ ==========
 
 // parseAndValidateSymbols парсит и валидирует symbols из запроса
@@ -38,10 +23,12 @@ func parseAndValidateSymbols(r *http.Request) ([]string, error) {
 		return nil, fmt.Errorf("query parameter 'symbols' is required, example: /prices?symbols=BTC,ETH,ADA")
 	}
 
-	symbols := strings.Split(symbolsParam, ",")
-	if len(symbols) == 0 {
-		return nil, fmt.Errorf("empty symbols list")
+	// Проверка на мусор (одни запятые и пробелы)
+	if strings.Trim(symbolsParam, " ,") == "" {
+		return nil, fmt.Errorf("symbols parameter is empty")
 	}
+
+	symbols := strings.Split(symbolsParam, ",")
 
 	validSymbols := make([]string, 0, len(symbols))
 	for _, symbol := range symbols {
@@ -84,7 +71,7 @@ func handleServiceError(w http.ResponseWriter, err error) {
 
 // ========== GET /prices ==========
 
-func (h *PriceHandler) GetLastPrices(w http.ResponseWriter, r *http.Request) {
+func (rt *ChiRouter) GetLastPrices(w http.ResponseWriter, r *http.Request) {
 	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
@@ -98,7 +85,7 @@ func (h *PriceHandler) GetLastPrices(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// 3. Вызов бизнес-логики
-	prices, err := h.useCase.GetPricesLast(ctx, validSymbols)
+	prices, err := rt.useCase.GetPricesLast(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -111,7 +98,7 @@ func (h *PriceHandler) GetLastPrices(w http.ResponseWriter, r *http.Request) {
 
 // ========== GET /min ==========
 
-func (h *PriceHandler) GetMinPrices(w http.ResponseWriter, r *http.Request) {
+func (rt *ChiRouter) GetMinPrices(w http.ResponseWriter, r *http.Request) {
 	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
@@ -125,7 +112,7 @@ func (h *PriceHandler) GetMinPrices(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// 3. Вызов бизнес-логики
-	prices, err := h.useCase.GetMinPrices(ctx, validSymbols)
+	prices, err := rt.useCase.GetMinPrices(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -138,7 +125,7 @@ func (h *PriceHandler) GetMinPrices(w http.ResponseWriter, r *http.Request) {
 
 // ========== GET /max ==========
 
-func (h *PriceHandler) GetMaxPrices(w http.ResponseWriter, r *http.Request) {
+func (rt *ChiRouter) GetMaxPrices(w http.ResponseWriter, r *http.Request) {
 	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
@@ -152,7 +139,7 @@ func (h *PriceHandler) GetMaxPrices(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// 3. Вызов бизнес-логики
-	prices, err := h.useCase.GetMaxPrices(ctx, validSymbols)
+	prices, err := rt.useCase.GetMaxPrices(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -165,7 +152,7 @@ func (h *PriceHandler) GetMaxPrices(w http.ResponseWriter, r *http.Request) {
 
 // ========== GET /change ==========
 
-func (h *PriceHandler) GetChangePrices(w http.ResponseWriter, r *http.Request) {
+func (rt *ChiRouter) GetChangePrices(w http.ResponseWriter, r *http.Request) {
 	// 1. Парсинг и валидация symbols
 	validSymbols, err := parseAndValidateSymbols(r)
 	if err != nil {
@@ -179,7 +166,7 @@ func (h *PriceHandler) GetChangePrices(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// 3. Вызов бизнес-логики
-	changes, err := h.useCase.GetChangePercent(ctx, validSymbols)
+	changes, err := rt.useCase.GetChangePercent(ctx, validSymbols)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -190,17 +177,41 @@ func (h *PriceHandler) GetChangePrices(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(changes)
 }
 
-func RunServer(uc PriceUseCase) {
-	router := chi.NewRouter()
-	handler, err := NewPriceHandler(uc)
-	if err != nil {
-		log.Fatalf("Failed to create handler: %v", err)
+type ChiRouter struct {
+	mux     *chi.Mux
+	useCase PriceUseCase
+}
+
+func NewChiRouter(uc PriceUseCase) (*ChiRouter, error) {
+	if uc == nil {
+		return nil, fmt.Errorf("NewChiRouter: useCase cannot be nil")
 	}
 
-	router.Get("/get/prices/last", handler.GetLastPrices)
-	router.Get("/get/prices/min", handler.GetMinPrices)
-	router.Get("/get/prices/max", handler.GetMaxPrices)
-	router.Get("/get/prices/percent", handler.GetChangePrices)
+	r := &ChiRouter{
+		mux:     chi.NewRouter(),
+		useCase: uc,
+	}
+
+	r.registerRoutes()
+	return r, nil
+}
+
+func (rt *ChiRouter) registerRoutes() {
+	rt.mux.Get("/get/prices/last", rt.GetLastPrices)
+	rt.mux.Get("/get/prices/min", rt.GetMinPrices)
+	rt.mux.Get("/get/prices/max", rt.GetMaxPrices)
+	rt.mux.Get("/get/prices/percent", rt.GetChangePrices)
+}
+
+func (r *ChiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.mux.ServeHTTP(w, req)
+}
+
+func RunServer(uc PriceUseCase) {
+	router, err := NewChiRouter(uc)
+	if err != nil {
+		log.Fatalf("Failed to create router: %v", err)
+	}
 
 	log.Println("🚀 Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", router))

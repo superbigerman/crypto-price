@@ -13,7 +13,7 @@ type PriceUseCaseImpl struct {
 	client PriceClient
 }
 
-func NewPriceUseCase(repo PriceRepository, client PriceClient) (*PriceUseCase, error) {
+func NewPriceUseCase(repo PriceRepository, client PriceClient) (PriceUseCase, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("NewPriceUseCase: PriceRepository cannot be nil")
 	}
@@ -27,24 +27,20 @@ func NewPriceUseCase(repo PriceRepository, client PriceClient) (*PriceUseCase, e
 }
 
 func (uc *PriceUseCaseImpl) GetPricesLast(ctx context.Context, symbols []string) ([]entity.Price, error) {
-	// 1. Получаем существующие валюты
 	existingSymbols, err := uc.repo.GetExistingSymbols(ctx, symbols)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Если все есть — берём из БД
 	if len(existingSymbols) == len(symbols) {
 		return uc.repo.GetPricesLast(ctx, symbols)
 	}
 
-	// 3. Идём в API
 	apiPrices, err := uc.client.GetRealTimePrices(ctx, symbols)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. Сохраняем цены
 	if err := uc.repo.SavePrices(ctx, apiPrices); err != nil {
 		log.Printf("WARNING: failed to save prices: %v", err)
 	}

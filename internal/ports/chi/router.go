@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	entity "final/internal/entities"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -17,13 +18,17 @@ type ChiRouter struct {
 	useCase PriceUseCase
 }
 
-func NewChiRouter(uc PriceUseCase) *ChiRouter {
+func NewChiRouter(uc PriceUseCase) (*ChiRouter, error) {
+	if uc == nil {
+		return nil, fmt.Errorf("NewChiRouter: useCase is required")
+	}
+
 	rt := &ChiRouter{
 		mux:     chi.NewRouter(),
 		useCase: uc,
 	}
 	rt.registerRoutes()
-	return rt
+	return rt, nil
 }
 func (rt *ChiRouter) registerRoutes() {
 	rt.mux.Get("/get/prices/last", rt.GetLastPrices)
@@ -31,9 +36,15 @@ func (rt *ChiRouter) registerRoutes() {
 	rt.mux.Get("/get/prices/max", rt.GetMaxPrices)
 	rt.mux.Get("/get/prices/percent", rt.GetChangePrices)
 }
-
+func (rt *ChiRouter) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
+	rt.mux.ServeHTTP(wr, req)
+}
 func RunServer(uc PriceUseCase) {
-	router := NewChiRouter(uc)
+	router, err := NewChiRouter(uc)
+	if err != nil {
+		log.Fatalf("Failed to create router: %v", err)
+	}
+
 	log.Println("🚀 Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", router))
 }

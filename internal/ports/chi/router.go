@@ -2,8 +2,7 @@ package chi
 
 import (
 	"encoding/json"
-	"errors"
-	entity "final/internal/entities"
+	"final/internal/dto"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,168 +12,196 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type ChiRouter struct {
-	mux     *chi.Mux
-	useCase PriceUseCase
+type Server struct {
+	router  *chi.Mux
+	service PriceUseCase
 }
 
-func NewChiRouter(uc PriceUseCase) (*ChiRouter, error) {
-	if uc == nil {
-		return nil, fmt.Errorf("NewChiRouter: useCase is required")
+func NewServer(service PriceUseCase) (*Server, error) {
+	if service == nil { //
+		return nil, fmt.Errorf("errprs") // хиитрую ошибку добавить
 	}
+	r := chi.NewRouter()
+	s := &Server{router: r, service: service}
+	s.registerRouter()
+	return &Server{router: r,
+		service: service,
+	}, nil
+}
 
-	rt := &ChiRouter{
-		mux:     chi.NewRouter(),
-		useCase: uc,
-	}
-	rt.registerRoutes()
-	return rt, nil
+func (s *Server) registerRouter() {
+	s.router.Get("/get/prices/last", s.GetLastPrice)
+	s.router.Get("/get/prices/min", s.GetMinPrice)
+	s.router.Get("/get/prices/max", s.GetMaxPrice)
+	s.router.Get("/get/prices/percent", s.GetChangePercent)
+
 }
-func (rt *ChiRouter) registerRoutes() {
-	rt.mux.Get("/get/prices/last", rt.GetLastPrices)
-	rt.mux.Get("/get/prices/min", rt.GetMinPrices)
-	rt.mux.Get("/get/prices/max", rt.GetMaxPrices)
-	rt.mux.Get("/get/prices/percent", rt.GetChangePrices)
-}
-func (rt *ChiRouter) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
-	rt.mux.ServeHTTP(wr, req)
-}
-func RunServer(uc PriceUseCase) {
-	router, err := NewChiRouter(uc)
+
+func ServerStart(service PriceUseCase) {
+	srv, err := NewServer(service)
 	if err != nil {
-		log.Fatalf("Failed to create router: %v", err)
+		log.Fatalf("Failed to create server: %v", err)
 	}
-
-	log.Println("🚀 Сервер запущен на http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", router))
+	log.Println("Север запущен на http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", srv))
 }
 
-// ========== ОБЩИЕ ФУНКЦИИ ВАЛИДАЦИИ ==========
-
-// parseAndValidateSymbols парсит и валидирует symbols из запроса
-var (
-	ErrBadRequest = errors.New("bad request")
-	ErrNotFound   = errors.New("not found")
-)
-
-func parseAndValidateSymbols(req *http.Request) ([]string, error) {
-	symbolsParam := req.URL.Query().Get("symbols")
-	if symbolsParam == "" {
-		return nil, ErrBadRequest
+// ================GetLastPrice================//
+func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	symbols := req.URL.Query().Get("symbols")
+	if symbols == "" {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "symbols is required"})
+		return
+	}
+	splitSymbols := strings.Split(symbols, ",")
+	prices, err := s.service.GetPricesLast(req.Context(), splitSymbols)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "internal error"})
+		return
+	}
+	if len(prices) == 0 {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "not found"})
+		return
 	}
 
-	if strings.Trim(symbolsParam, " ,") == "" {
-		return nil, ErrBadRequest
-	}
-
-	symbols := strings.Split(symbolsParam, ",")
-	validSymbols := make([]string, 0, len(symbols))
-
-	for _, symbol := range symbols {
-		symbol = strings.TrimSpace(strings.ToUpper(symbol))
-		if symbol == "" {
-			continue
-		}
-		validSymbols = append(validSymbols, symbol) // ← добавить
-	}
-
-	if len(validSymbols) == 0 {
-		return nil, ErrNotFound
-	}
-
-	return validSymbols, nil
-}
-
-// ========== DTO ==========
-
-type PriceResponse struct {
-	Symbol string  `json:"symbol"`
-	Price  float64 `json:"price"`
-	Time   string  `json:"time"`
-}
-
-// ========== КОНВЕРТЕР ==========
-
-func toPriceResponse(prices []entity.Price) []PriceResponse {
-	result := make([]PriceResponse, 0, len(prices))
-	for _, p := range prices {
-		result = append(result, PriceResponse{
-			Symbol: p.Symbol,
-			Price:  p.Price,
-			Time:   p.CreatedAt.Format(time.RFC3339),
+	var data []dto.PricesDTO
+	for _, v := range prices {
+		data = append(data, dto.PricesDTO{
+			Symbol: v.Symbol,
+			Price:  v.Price,
+			Time:   v.CreatedAt.Format(time.RFC3339),
 		})
 	}
-	return result
+
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	rw.WriteHeader(http.StatusOK)
 }
 
-// ========== GET /prices ==========
-
-func (rt *ChiRouter) GetLastPrices(wr http.ResponseWriter, req *http.Request) {
-	validSymbols, err := parseAndValidateSymbols(req)
+// ================GetMaxPrice================//
+func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	symbols := req.URL.Query().Get("symbols")
+	if symbols == "" {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "symbols is required"})
+		return
+	}
+	splitSymbols := strings.Split(symbols, ",")
+	prices, err := s.service.GetMaxPrices(req.Context(), splitSymbols)
 	if err != nil {
-		http.Error(wr, err.Error(), http.StatusBadRequest)
+		log.Printf("ERROR: %v", err)
+		rw.Header().Set("Content-Type", "JSON")
+		rw.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "internal error"})
+		return
+	}
+	if len(prices) == 0 {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "not found"})
 		return
 	}
 
-	prices, err := rt.useCase.GetPricesLast(req.Context(), validSymbols)
-	if err != nil {
-		http.Error(wr, "internal error", http.StatusInternalServerError)
-		return
+	var data []dto.PricesDTO
+	for _, v := range prices {
+		data = append(data, dto.PricesDTO{
+			Symbol: v.Symbol,
+			Price:  v.Price,
+			Time:   v.CreatedAt.Format(time.RFC3339),
+		})
 	}
 
-	json.NewEncoder(wr).Encode(toPriceResponse(prices))
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	rw.WriteHeader(http.StatusOK)
 }
 
-// ========== GET /get/prices/min ==========
-
-func (rt *ChiRouter) GetMinPrices(wr http.ResponseWriter, req *http.Request) {
-	validSymbols, err := parseAndValidateSymbols(req)
+// ================GetMinPrice================//
+func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	symbols := req.URL.Query().Get("symbols")
+	if symbols == "" {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "symbols is required"})
+		return
+	}
+	splitSymbols := strings.Split(symbols, ",")
+	prices, err := s.service.GetMinPrices(req.Context(), splitSymbols)
 	if err != nil {
-		http.Error(wr, err.Error(), http.StatusBadRequest)
+		log.Printf("ERROR: %v", err)
+		rw.Header().Set("Content-Type", "aplicantion/json")
+		rw.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "internal error"})
+		return
+	}
+	if len(prices) == 0 {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "not found"})
 		return
 	}
 
-	prices, err := rt.useCase.GetMinPrices(req.Context(), validSymbols)
-	if err != nil {
-		http.Error(wr, "internal error", http.StatusInternalServerError)
-		return
+	var data []dto.PricesDTO
+	for _, v := range prices {
+		data = append(data, dto.PricesDTO{
+			Symbol: v.Symbol,
+			Price:  v.Price,
+			Time:   v.CreatedAt.Format(time.RFC3339),
+		})
 	}
 
-	json.NewEncoder(wr).Encode(toPriceResponse(prices))
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	rw.WriteHeader(http.StatusOK)
 }
 
-// ========== GET /get/prices/max ==========
-
-func (rt *ChiRouter) GetMaxPrices(wr http.ResponseWriter, req *http.Request) {
-	validSymbols, err := parseAndValidateSymbols(req)
+// ================GetChangePrices================//
+func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	symbols := req.URL.Query().Get("symbols")
+	if symbols == "" {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "symbols is required"})
+		return
+	}
+	splitSymbols := strings.Split(symbols, ",")
+	prices, err := s.service.GetChangePercent(req.Context(), splitSymbols)
 	if err != nil {
-		http.Error(wr, err.Error(), http.StatusBadRequest)
+		log.Printf("ERROR: %v", err)
+		rw.Header().Set("Content-Type", "aplicantion/json")
+		rw.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "internal error"})
+		return
+	}
+	if len(prices) == 0 {
+		rw.Header().Set("Content-Type", "aplicantion/json")
+		rw.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "not found"})
 		return
 	}
 
-	prices, err := rt.useCase.GetMaxPrices(req.Context(), validSymbols)
-	if err != nil {
-		http.Error(wr, "internal error", http.StatusInternalServerError)
-		return
+	var data []dto.PricesDTO
+	for _, v := range prices {
+		data = append(data, dto.PricesDTO{
+			Symbol: v.Symbol,
+			Price:  v.Price,
+			Time:   v.CreatedAt.Format(time.RFC3339),
+		})
 	}
 
-	json.NewEncoder(wr).Encode(toPriceResponse(prices))
-}
-
-// ========== GET /get/prices/percent ==========
-
-func (rt *ChiRouter) GetChangePrices(wr http.ResponseWriter, req *http.Request) {
-	validSymbols, err := parseAndValidateSymbols(req)
-	if err != nil {
-		http.Error(wr, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	changes, err := rt.useCase.GetChangePercent(req.Context(), validSymbols)
-	if err != nil {
-		http.Error(wr, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(wr).Encode(toPriceResponse(changes))
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	rw.WriteHeader(http.StatusOK)
 }

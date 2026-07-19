@@ -2,7 +2,7 @@ package chi
 
 import (
 	"encoding/json"
-	"final/internal/dto"
+	"final/internal/ports/chi/dto"
 	"fmt"
 	"log"
 	"net/http"

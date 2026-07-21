@@ -35,5 +35,9 @@ func main() {
 		log.Fatalf("usecase: %v", err)
 	}
 
-	chi.RunServer(uc)
+	srv, err := chi.NewServer(uc)
+	if err != nil {
+		log.Fatalf("server: %v", err)
+	}
+	srv.Start()
 }

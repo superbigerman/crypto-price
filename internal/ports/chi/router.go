@@ -2,7 +2,7 @@ package chi
 
 import (
 	"encoding/json"
-	dto "final/internal/usecases"
+	dto "final/pkg"
 	"fmt"
 	"log"
 	"net/http"
@@ -68,9 +68,7 @@ func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	rw.Header().Add("ContentType", "application/json")
-	err = json.NewEncoder(rw).Encode(data)
-	rw.WriteHeader(http.StatusOK)
+	json.NewEncoder(rw).Encode(data)
 }
 
 // ================GetMaxPrice================//
@@ -102,9 +100,7 @@ func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	rw.Header().Add("ContentType", "application/json")
-	err = json.NewEncoder(rw).Encode(data)
-	rw.WriteHeader(http.StatusOK)
+	json.NewEncoder(rw).Encode(data)
 }
 
 // ================GetMinPrice================//
@@ -136,9 +132,7 @@ func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	rw.Header().Add("ContentType", "application/json")
-	err = json.NewEncoder(rw).Encode(data)
-	rw.WriteHeader(http.StatusOK)
+	json.NewEncoder(rw).Encode(data)
 }
 
 // ================GetChangePrices================//
@@ -170,7 +164,5 @@ func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	rw.Header().Add("ContentType", "application/json")
-	err = json.NewEncoder(rw).Encode(data)
-	rw.WriteHeader(http.StatusOK)
+	json.NewEncoder(rw).Encode(data)
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	httpSwagger "github.com/swaggo/http-swagger"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -17,12 +19,14 @@ type Server struct {
 	service PriceUseCase
 }
 
+func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	s.router.ServeHTTP(w, req)
+}
 func NewServer(service PriceUseCase) (*Server, error) {
 	if service == nil { //
 		return nil, fmt.Errorf("errprs") // хиитрую ошибку добавить
 	}
 	r := chi.NewRouter()
-	s := &Server{router: r, service: service}
 
 	return &Server{router: r,
 		service: service,
@@ -35,13 +39,28 @@ func (s *Server) Start() {
 	s.router.Get("/get/prices/max", s.GetMaxPrice)
 	s.router.Get("/get/prices/percent", s.GetChangePercent)
 
+	// Swagger UI
+	s.router.Get("/swagger/*", httpSwagger.WrapHandler)
+
+	// Swagger JSON
+	s.router.Get("/swagger/doc.json", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./docs/swagger.json")
+	})
+
 	log.Println("Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", s))
 }
 
 // ================GetLastPrice================//
+// @Summary Последние цены
+// @Param symbols query string true "Символы через запятую"
+// @Success 200 {array} dto.PriceDTO
+// @Failure 400 {string} string "Bad request"
+// @Failure 404 {string} string "Not found"
+// @Failure 500 {string} string "Internal error"
+// @Router /get/prices/last [get]
 func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
+
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)
@@ -72,8 +91,15 @@ func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 }
 
 // ================GetMaxPrice================//
+// @Summary Максимальные цены
+// @Param symbols query string true "Символы через запятую"
+// @Success 200 {array} dto.PriceDTO
+// @Failure 400 {string} string "Bad request"
+// @Failure 404 {string} string "Not found"
+// @Failure 500 {string} string "Internal error"
+// @Router /get/prices/max [get]
 func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
+
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)
@@ -104,8 +130,15 @@ func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 }
 
 // ================GetMinPrice================//
+// @Summary Минимальные цены
+// @Param symbols query string true "Символы через запятую"
+// @Success 200 {array} dto.PriceDTO
+// @Failure 400 {string} string "Bad request"
+// @Failure 404 {string} string "Not found"
+// @Failure 500 {string} string "Internal error"
+// @Router /get/prices/min [get]
 func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
+
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)
@@ -136,8 +169,15 @@ func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 }
 
 // ================GetChangePrices================//
+// @Summary Изменение в процентах
+// @Param symbols query string true "Символы через запятую"
+// @Success 200 {array} dto.PriceDTO
+// @Failure 400 {string} string "Bad request"
+// @Failure 404 {string} string "Not found"
+// @Failure 500 {string} string "Internal error"
+// @Router /get/prices/percent [get]
 func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
+
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)

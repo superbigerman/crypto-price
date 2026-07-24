@@ -1,4 +1,4 @@
-package usecases
+package dto
 
 type PriceDTO struct {
 	Symbol string  `json:"symbol"`

@@ -1,0 +1,131 @@
+basePath: /
+definitions:
+  dto.PriceDTO:
+    properties:
+      price:
+        type: number
+      symbol:
+        type: string
+      time:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Сервис для получения курсов криптовалют
+  title: Crypto Price API
+  version: "1.0"
+paths:
+  /get/prices/last:
+    get:
+      parameters:
+      - description: Символы через запятую
+        in: query
+        name: symbols
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.PriceDTO'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+        "500":
+          description: Internal error
+          schema:
+            type: string
+      summary: Последние цены
+  /get/prices/max:
+    get:
+      parameters:
+      - description: Символы через запятую
+        in: query
+        name: symbols
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.PriceDTO'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+        "500":
+          description: Internal error
+          schema:
+            type: string
+      summary: Максимальные цены
+  /get/prices/min:
+    get:
+      parameters:
+      - description: Символы через запятую
+        in: query
+        name: symbols
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.PriceDTO'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+        "500":
+          description: Internal error
+          schema:
+            type: string
+      summary: Минимальные цены
+  /get/prices/percent:
+    get:
+      parameters:
+      - description: Символы через запятую
+        in: query
+        name: symbols
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.PriceDTO'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+        "500":
+          description: Internal error
+          schema:
+            type: string
+      summary: Изменение в процентах
+swagger: "2.0"

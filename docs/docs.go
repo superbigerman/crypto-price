@@ -15,7 +15,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/get/prices/last": {
+        "/api/v1/get/prices/last": {
             "get": {
                 "summary": "Последние цены",
                 "parameters": [
@@ -58,7 +58,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/get/prices/max": {
+        "/api/v1/get/prices/max": {
             "get": {
                 "summary": "Максимальные цены",
                 "parameters": [
@@ -101,7 +101,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/get/prices/min": {
+        "/api/v1/get/prices/min": {
             "get": {
                 "summary": "Минимальные цены",
                 "parameters": [
@@ -144,7 +144,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/get/prices/percent": {
+        "/api/v1/get/prices/percent": {
             "get": {
                 "summary": "Изменение в процентах",
                 "parameters": [
@@ -210,7 +210,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "localhost:8080",
-	BasePath:         "/",
+	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "Crypto Price API",
 	Description:      "Сервис для получения курсов криптовалют",

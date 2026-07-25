@@ -34,10 +34,10 @@ func NewServer(service PriceUseCase) (*Server, error) {
 }
 
 func (s *Server) Start() {
-	s.router.Get("/get/prices/last", s.GetLastPrice)
-	s.router.Get("/get/prices/min", s.GetMinPrice)
-	s.router.Get("/get/prices/max", s.GetMaxPrice)
-	s.router.Get("/get/prices/percent", s.GetChangePercent)
+	s.router.Get("/api/v1/get/prices/last", s.GetLastPrice)
+	s.router.Get("/api/v1/get/prices/min", s.GetMinPrice)
+	s.router.Get("/api/v1/get/prices/max", s.GetMaxPrice)
+	s.router.Get("/api/v1/get/prices/percent", s.GetChangePercent)
 
 	// Swagger UI
 	s.router.Get("/swagger/*", httpSwagger.WrapHandler)
@@ -58,7 +58,7 @@ func (s *Server) Start() {
 // @Failure 400 {string} string "Bad request"
 // @Failure 404 {string} string "Not found"
 // @Failure 500 {string} string "Internal error"
-// @Router /get/prices/last [get]
+// @Router /api/v1/get/prices/last [get]
 func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 
 	symbols := req.URL.Query().Get("symbols")
@@ -87,7 +87,13 @@ func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	json.NewEncoder(rw).Encode(data)
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	if err != nil {
+		http.Error(rw, "internal error", http.StatusInternalServerError)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetMaxPrice================//
@@ -97,7 +103,7 @@ func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 // @Failure 400 {string} string "Bad request"
 // @Failure 404 {string} string "Not found"
 // @Failure 500 {string} string "Internal error"
-// @Router /get/prices/max [get]
+// @Router /api/v1/get/prices/max [get]
 func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 
 	symbols := req.URL.Query().Get("symbols")
@@ -125,8 +131,13 @@ func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 			Time:   v.CreatedAt.Format(time.RFC3339),
 		})
 	}
-
-	json.NewEncoder(rw).Encode(data)
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	if err != nil {
+		http.Error(rw, "internal error", http.StatusInternalServerError)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetMinPrice================//
@@ -136,7 +147,7 @@ func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 // @Failure 400 {string} string "Bad request"
 // @Failure 404 {string} string "Not found"
 // @Failure 500 {string} string "Internal error"
-// @Router /get/prices/min [get]
+// @Router /api/v1/get/prices/min [get]
 func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 
 	symbols := req.URL.Query().Get("symbols")
@@ -165,7 +176,13 @@ func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	json.NewEncoder(rw).Encode(data)
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	if err != nil {
+		http.Error(rw, "internal error", http.StatusInternalServerError)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetChangePrices================//
@@ -175,7 +192,7 @@ func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 // @Failure 400 {string} string "Bad request"
 // @Failure 404 {string} string "Not found"
 // @Failure 500 {string} string "Internal error"
-// @Router /get/prices/percent [get]
+// @Router /api/v1/get/prices/percent [get]
 func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
 
 	symbols := req.URL.Query().Get("symbols")
@@ -204,5 +221,11 @@ func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	json.NewEncoder(rw).Encode(data)
+	rw.Header().Add("ContentType", "application/json")
+	err = json.NewEncoder(rw).Encode(data)
+	if err != nil {
+		http.Error(rw, "internal error", http.StatusInternalServerError)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
 }

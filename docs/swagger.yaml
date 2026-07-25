@@ -1,4 +1,4 @@
-basePath: /
+basePath: /api/v1
 definitions:
   dto.PriceDTO:
     properties:
@@ -16,7 +16,7 @@ info:
   title: Crypto Price API
   version: "1.0"
 paths:
-  /get/prices/last:
+  /api/v1/get/prices/last:
     get:
       parameters:
       - description: Символы через запятую
@@ -44,7 +44,7 @@ paths:
           schema:
             type: string
       summary: Последние цены
-  /get/prices/max:
+  /api/v1/get/prices/max:
     get:
       parameters:
       - description: Символы через запятую
@@ -72,7 +72,7 @@ paths:
           schema:
             type: string
       summary: Максимальные цены
-  /get/prices/min:
+  /api/v1/get/prices/min:
     get:
       parameters:
       - description: Символы через запятую
@@ -100,7 +100,7 @@ paths:
           schema:
             type: string
       summary: Минимальные цены
-  /get/prices/percent:
+  /api/v1/get/prices/percent:
     get:
       parameters:
       - description: Символы через запятую

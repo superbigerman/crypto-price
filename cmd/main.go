@@ -17,7 +17,7 @@ import (
 // @version 1.0
 // @description Сервис для получения курсов криптовалют
 // @host localhost:8080
-// @BasePath /
+// @BasePath /api/v1
 
 func main() {
 	godotenv.Load()

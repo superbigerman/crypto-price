@@ -7,9 +7,9 @@
         "version": "1.0"
     },
     "host": "localhost:8080",
-    "basePath": "/",
+    "basePath": "/api/v1",
     "paths": {
-        "/get/prices/last": {
+        "/api/v1/get/prices/last": {
             "get": {
                 "summary": "Последние цены",
                 "parameters": [
@@ -52,7 +52,7 @@
                 }
             }
         },
-        "/get/prices/max": {
+        "/api/v1/get/prices/max": {
             "get": {
                 "summary": "Максимальные цены",
                 "parameters": [
@@ -95,7 +95,7 @@
                 }
             }
         },
-        "/get/prices/min": {
+        "/api/v1/get/prices/min": {
             "get": {
                 "summary": "Минимальные цены",
                 "parameters": [
@@ -138,7 +138,7 @@
                 }
             }
         },
-        "/get/prices/percent": {
+        "/api/v1/get/prices/percent": {
             "get": {
                 "summary": "Изменение в процентах",
                 "parameters": [

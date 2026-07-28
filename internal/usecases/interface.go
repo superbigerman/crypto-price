@@ -23,6 +23,7 @@ type PriceUseCase interface {
 	GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error)
 	GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error)
 	GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error)
+	GetAllSymbols(ctx context.Context) ([]string, error)
 }
 
 // PriceClient

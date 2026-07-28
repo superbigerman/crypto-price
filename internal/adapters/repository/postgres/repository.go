@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"time"
 
 	entity "final/internal/entities"
 
@@ -38,7 +37,14 @@ func (r *PriceRepositoryPostgres) SavePrices(ctx context.Context, prices []entit
 		return nil
 	}
 
-	// Только INSERT в prices, без проверки currencies!
+	// Добавляем новые валюты в currencies
+	symbols := make([]string, len(prices))
+	for i, p := range prices {
+		symbols[i] = p.Symbol
+	}
+	r.AddCurrencies(ctx, symbols)
+
+	// Сохраняем цены
 	builder := r.sq.Insert("prices").Columns("symbol", "price", "created_at")
 	for _, p := range prices {
 		builder = builder.Values(p.Symbol, p.Price, p.CreatedAt)
@@ -91,9 +97,9 @@ func (r *PriceRepositoryPostgres) GetPricesLast(ctx context.Context, symbols []s
 	return result, nil
 }
 
-// GetAllSymbols возвращает все символы, которые есть в таблице prices
+// GetAllSymbols возвращает все символы из таблицы currencies
 func (r *PriceRepositoryPostgres) GetAllSymbols(ctx context.Context) ([]string, error) {
-	rows, err := r.pool.Query(ctx, "SELECT DISTINCT symbol FROM prices ORDER BY symbol")
+	rows, err := r.pool.Query(ctx, "SELECT symbol FROM currencies ORDER BY symbol")
 	if err != nil {
 		return nil, fmt.Errorf("GetAllSymbols: failed to query symbols: %w", err)
 	}
@@ -114,7 +120,6 @@ func (r *PriceRepositoryPostgres) GetAllSymbols(ctx context.Context) ([]string, 
 
 	return symbols, nil
 }
-
 func (r *PriceRepositoryPostgres) GetMinPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	sql := `
         SELECT symbol, MIN(price) as price, MIN(created_at) as created_at
@@ -190,9 +195,9 @@ func (r *PriceRepositoryPostgres) AddCurrencies(ctx context.Context, symbols []s
 		return nil
 	}
 
-	builder := r.sq.Insert("currencies").Columns("symbol", "name", "created_at")
+	builder := r.sq.Insert("currencies").Columns("symbol")
 	for _, s := range symbols {
-		builder = builder.Values(s, s, time.Now())
+		builder = builder.Values(s)
 	}
 
 	sql, args, err := builder.ToSql()

@@ -2,15 +2,13 @@ package main
 
 import (
 	"log"
-	"os"
 	"time"
 
 	"final/internal/adapters/client/coindesk"
 	"final/internal/adapters/repository/postgres"
-	"final/internal/ports/chi"
+	"final/internal/app"
 	"final/internal/usecases"
-
-	"github.com/joho/godotenv"
+	"final/pkg/config"
 )
 
 // @title Crypto Price API
@@ -20,17 +18,20 @@ import (
 // @BasePath /
 
 func main() {
-	godotenv.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
 
 	apiClient := coindesk.NewCoinDeskClient(
-		os.Getenv("COINDESK_URL"),
-		10*time.Second,
+		cfg.CoinDesk.URL,
+		time.Duration(cfg.CoinDesk.TimeoutSec)*time.Second,
 		false,
 		"USD",
-		os.Getenv("COINDESK_API_KEY"),
+		cfg.CoinDesk.APIKey,
 	)
 
-	repo, err := postgres.NewPriceRepositoryPostgres(os.Getenv("DATABASE_URL"))
+	repo, err := postgres.NewPriceRepositoryPostgres(cfg.Database.URL)
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}
@@ -41,9 +42,5 @@ func main() {
 		log.Fatalf("usecase: %v", err)
 	}
 
-	srv, err := chi.NewServer(uc)
-	if err != nil {
-		log.Fatalf("server: %v", err)
-	}
-	srv.Start()
+	app.Run(uc, cfg)
 }

@@ -1,0 +1,13 @@
+server:
+  port: 8080
+
+coindesk:
+  url: https://min-api.cryptocompare.com
+  api_key: 1247506605989d7457389d3e93f5958bc2f7874b29422604dcca9cacc47e8b0d
+  timeout_sec: 10
+
+database:
+  url: postgres://macbook@localhost:5432/crypto?sslmode=disable
+
+cron:
+  interval_min: 5

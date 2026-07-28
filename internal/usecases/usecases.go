@@ -110,7 +110,7 @@ func (uc *PriceUseCaseImpl) GetMinPrices(ctx context.Context, symbols []string) 
 		return nil, fmt.Errorf("GetMinPrices: no existing symbols found in database")
 	}
 
-	return uc.repo.GetMinPrices(ctx, existingSymbols) // исправить!! 
+	return uc.repo.GetMinPrices(ctx, existingSymbols) // исправить!!
 }
 
 func (uc *PriceUseCaseImpl) GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
@@ -157,4 +157,7 @@ func (uc *PriceUseCaseImpl) GetChangePercent(ctx context.Context, symbols []stri
 	}
 
 	return uc.repo.GetChangePercent(ctx, existingSymbols)
+}
+func (uc *PriceUseCaseImpl) GetAllSymbols(ctx context.Context) ([]string, error) {
+	return uc.repo.GetAllSymbols(ctx)
 }

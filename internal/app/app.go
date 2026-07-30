@@ -1,39 +1,43 @@
 package app
 
 import (
-	"context"
 	"log"
 	"time"
 
+	"final/internal/adapters/client/coindesk"
+	"final/internal/adapters/repository/postgres"
 	"final/internal/ports/chi"
 	"final/internal/usecases"
 	"final/pkg/config"
 )
 
-func Run(uc usecases.PriceUseCase, cfg *config.Config) {
-	// Cron: обновление цен
-	go func() {
-		// Первый запуск сразу
-		symbols, _ := uc.GetAllSymbols(context.Background())
-		if len(symbols) > 0 {
-			log.Println("Cron: initial update...")
-			uc.GetPricesLast(context.Background(), symbols)
-		}
+func Run() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
 
-		// Затем по расписанию
-		interval := time.Duration(cfg.Cron.IntervalMin) * time.Minute
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for range ticker.C {
-			log.Println("Cron: updating prices...")
-			symbols, _ := uc.GetAllSymbols(context.Background())
-			if len(symbols) > 0 {
-				uc.GetPricesLast(context.Background(), symbols)
-			}
-		}
-	}()
+	apiClient := coindesk.NewCoinDeskClient(
+		cfg.CoinDesk.URL,
+		time.Duration(cfg.CoinDesk.TimeoutSec)*time.Second,
+		false,
+		"USD",
+		cfg.CoinDesk.APIKey,
+	)
 
-	// HTTP-сервер
+	repo, err := postgres.NewPriceRepositoryPostgres(cfg.Database.URL)
+	if err != nil {
+		log.Fatalf("db: %v", err)
+	}
+	defer repo.Close()
+
+	uc, err := usecases.NewPriceUseCase(repo, apiClient)
+	if err != nil {
+		log.Fatalf("usecase: %v", err)
+	}
+
+	startCron(uc, cfg)
+
 	srv, err := chi.NewServer(uc)
 	if err != nil {
 		log.Fatalf("server: %v", err)

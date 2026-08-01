@@ -7,7 +7,7 @@ coindesk:
   timeout_sec: 10
 
 database:
-  url: postgres://macbook@localhost:5432/crypto?sslmode=disable
+  url: postgres://macbook@db:5432/crypto?sslmode=disable
 
 cron:
   interval_min: 5

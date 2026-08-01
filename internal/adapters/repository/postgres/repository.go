@@ -22,7 +22,7 @@ func NewPriceRepositoryPostgres(connString string) (*PriceRepositoryPostgres, er
 	}
 	return &PriceRepositoryPostgres{
 		pool: pool,
-		sq:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar), // ✅ добавить!
+		sq:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}, nil
 }
 

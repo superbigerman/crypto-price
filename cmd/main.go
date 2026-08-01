@@ -1,6 +1,9 @@
 package main
 
-import "final/internal/app"
+import (
+	"final/internal/app"
+	"log"
+)
 
 // @title Crypto Price API
 // @version 1.0
@@ -9,5 +12,7 @@ import "final/internal/app"
 // @BasePath /
 
 func main() {
-	app.Run()
+	if err := app.Run(); err != nil {
+		log.Fatal("app: %V", err)
+	}
 }

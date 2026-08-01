@@ -161,3 +161,16 @@ func (uc *PriceUseCaseImpl) GetChangePercent(ctx context.Context, symbols []stri
 func (uc *PriceUseCaseImpl) GetAllSymbols(ctx context.Context) ([]string, error) {
 	return uc.repo.GetAllSymbols(ctx)
 }
+
+func (uc *PriceUseCaseImpl) UpdateAllPrices(ctx context.Context) error {
+	symbols, err := uc.repo.GetAllSymbols(ctx)
+	if err != nil {
+		return fmt.Errorf("UpdateAllPrices: $w", err)
+
+	}
+	if len(symbols) == 0 {
+		return nil
+	}
+	_, err = uc.GetPricesLast(ctx, symbols)
+	return err
+}

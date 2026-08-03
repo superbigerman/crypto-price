@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	entity "final/internal/entities"
 
@@ -195,7 +196,7 @@ func (r *PriceRepositoryPostgres) AddCurrencies(ctx context.Context, symbols []s
 		return nil
 	}
 
-	builder := r.sq.Insert("currencies").Columns("symbol")
+	builder := r.sq.Insert("currencies").Columns("symbol").Suffix("ON CONFLICT (symbol) DO NOTHING")
 	for _, s := range symbols {
 		builder = builder.Values(s)
 	}
@@ -206,10 +207,6 @@ func (r *PriceRepositoryPostgres) AddCurrencies(ctx context.Context, symbols []s
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)
-	if err != nil {
-		// Игнорируем ошибку уникальности (валюта уже есть)
-		return nil
-	}
 	return nil
 }
 
@@ -218,39 +215,50 @@ func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols 
 	var result []entity.Price
 
 	for _, symbol := range symbols {
-		var currentPrice, hourAgoPrice float64
+		var currentPrice, prevPrice float64
 
 		// Текущая цена
 		err := r.pool.QueryRow(ctx, `
-            SELECT price FROM prices 
-            WHERE symbol = $1 
-            ORDER BY created_at DESC 
-            LIMIT 1
-        `, symbol).Scan(&currentPrice)
+   SELECT price FROM prices 
+   WHERE symbol = $1 
+   ORDER BY created_at DESC 
+   LIMIT 1
+  `, symbol).Scan(&currentPrice)
 		if err != nil {
 			return nil, fmt.Errorf("GetChangePercent: failed to get current price for %s: %w", symbol, err)
 		}
 
-		// Цена час назад
+		// Пробуем цену час назад
 		err = r.pool.QueryRow(ctx, `
-            SELECT price FROM prices 
-            WHERE symbol = $1 AND created_at <= NOW() - INTERVAL '1 hour'
-            ORDER BY created_at DESC 
-            LIMIT 1
-        `, symbol).Scan(&hourAgoPrice)
+   SELECT price FROM prices 
+   WHERE symbol = $1 AND created_at <= NOW() - INTERVAL '1 hour'
+   ORDER BY created_at DESC 
+   LIMIT 1
+  `, symbol).Scan(&prevPrice)
+
+		// Если нет цены за час — берём предыдущую (любую, кроме текущей)
 		if err != nil {
-			return nil, fmt.Errorf("GetChangePercent: failed to get hour ago price for %s: %w", symbol, err)
+			err = r.pool.QueryRow(ctx, `
+    SELECT price FROM prices 
+    WHERE symbol = $1 
+    ORDER BY created_at DESC 
+    LIMIT 1 OFFSET 1
+   `, symbol).Scan(&prevPrice)
+			if err != nil {
+				continue // нет второй цены — пропускаем эту валюту
+			}
 		}
 
-		if hourAgoPrice == 0 {
-			return nil, fmt.Errorf("GetChangePercent: hour ago price for %s is zero, skipping", symbol)
+		if prevPrice == 0 {
+			continue
 		}
 
-		changePercent := ((currentPrice - hourAgoPrice) / hourAgoPrice) * 100
+		changePercent := ((currentPrice - prevPrice) / prevPrice) * 100
 
 		result = append(result, entity.Price{
-			Symbol: symbol,
-			Price:  changePercent,
+			Symbol:    symbol,
+			Price:     changePercent,
+			CreatedAt: time.Now(),
 		})
 	}
 

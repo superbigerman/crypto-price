@@ -94,69 +94,20 @@ func (uc *PriceUseCaseImpl) GetMinPrices(ctx context.Context, symbols []string) 
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetMinPrices: symbols list cannot be empty")
 	}
-
-	for _, s := range symbols {
-		if s == "" {
-			return nil, fmt.Errorf("GetMinPrices: empty symbol")
-		}
-	}
-
-	existingSymbols, err := uc.repo.GetAllSymbols(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("GetMinPrices: failed to get all symbols: %w", err)
-	}
-
-	if len(existingSymbols) == 0 {
-		return nil, fmt.Errorf("GetMinPrices: no existing symbols found in database")
-	}
-
-	return uc.repo.GetMinPrices(ctx, existingSymbols) // исправить!!
+	return uc.repo.GetMinPrices(ctx, symbols)
 }
 
 func (uc *PriceUseCaseImpl) GetMaxPrices(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetMaxPrices: symbols list cannot be empty")
 	}
-
-	for _, s := range symbols {
-		if s == "" {
-			return nil, fmt.Errorf("GetMaxPrices: empty symbol")
-		}
-	}
-
-	existingSymbols, err := uc.repo.GetAllSymbols(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("GetMaxPrices: failed to get all symbols: %w", err)
-	}
-
-	if len(existingSymbols) == 0 {
-		return nil, fmt.Errorf("GetMaxPrices: no existing symbols found in database")
-	}
-
-	return uc.repo.GetMaxPrices(ctx, existingSymbols)
+	return uc.repo.GetMaxPrices(ctx, symbols)
 }
-
 func (uc *PriceUseCaseImpl) GetChangePercent(ctx context.Context, symbols []string) ([]entity.Price, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetChangePercent: symbols list cannot be empty")
 	}
-
-	for _, s := range symbols {
-		if s == "" {
-			return nil, fmt.Errorf("GetChangePercent: empty symbol")
-		}
-	}
-
-	existingSymbols, err := uc.repo.GetAllSymbols(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("GetChangePercent: failed to get all symbols: %w", err)
-	}
-
-	if len(existingSymbols) == 0 {
-		return nil, fmt.Errorf("GetChangePercent: no existing symbols found in database")
-	}
-
-	return uc.repo.GetChangePercent(ctx, existingSymbols)
+	return uc.repo.GetChangePercent(ctx, symbols)
 }
 func (uc *PriceUseCaseImpl) GetAllSymbols(ctx context.Context) ([]string, error) {
 	return uc.repo.GetAllSymbols(ctx)
@@ -165,12 +116,17 @@ func (uc *PriceUseCaseImpl) GetAllSymbols(ctx context.Context) ([]string, error)
 func (uc *PriceUseCaseImpl) UpdateAllPrices(ctx context.Context) error {
 	symbols, err := uc.repo.GetAllSymbols(ctx)
 	if err != nil {
-		return fmt.Errorf("UpdateAllPrices: $w", err)
-
+		return fmt.Errorf("UpdateAllPrices: %w", err)
 	}
+
 	if len(symbols) == 0 {
 		return nil
 	}
-	_, err = uc.GetPricesLast(ctx, symbols)
-	return err
+
+	prices, err := uc.externalAPI.GetRealTimePrices(ctx, symbols)
+	if err != nil {
+		return fmt.Errorf("UpdateAllPrices: %w", err)
+	}
+
+	return uc.repo.SavePrices(ctx, prices)
 }

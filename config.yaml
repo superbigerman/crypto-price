@@ -3,11 +3,11 @@ server:
 
 coindesk:
   url: https://min-api.cryptocompare.com
-  api_key: 1247506605989d7457389d3e93f5958bc2f7874b29422604dcca9cacc47e8b0d
+  api_key: 8f0e2c669b899a53f6fdeb863120e675471f1240e01ef84ce316b1d0b2c9309c
   timeout_sec: 10
 
 database:
-  url: postgres://macbook@db:5432/crypto?sslmode=disable
+  url: postgres://macbook@host.docker.internal:5432/crypto?sslmode=disable
 
 cron:
   interval_min: 5

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -104,8 +105,16 @@ func (c *CoinDeskClient) GetRealTimePrices(ctx context.Context, symbols []string
 	}
 
 	// ========== ПАРСИНГ JSON ==========
+	// ========== ПАРСИНГ JSON ==========
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("GetRealTimePrices: failed to read response: %v", err)
+		return nil, fmt.Errorf("GetRealTimePrices: failed to read response: %w", err)
+	}
+	log.Printf("API response: %s", string(bodyBytes))
+
 	var data map[string]map[string]float64
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err := json.Unmarshal(bodyBytes, &data); err != nil {
 		log.Printf("GetRealTimePrices: failed to decode response: %v", err)
 		return nil, fmt.Errorf("GetRealTimePrices: failed to decode response: %w", err)
 	}

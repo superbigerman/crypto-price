@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	entity "final/internal/entities"
@@ -236,7 +237,7 @@ func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols 
    LIMIT 1
   `, symbol).Scan(&prevPrice)
 
-		// Если нет цены за час — берём предыдущую (любую, кроме текущей)
+		// Если нет цены за час — берём предыдущую
 		if err != nil {
 			err = r.pool.QueryRow(ctx, `
     SELECT price FROM prices 
@@ -245,7 +246,7 @@ func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols 
     LIMIT 1 OFFSET 1
    `, symbol).Scan(&prevPrice)
 			if err != nil {
-				continue // нет второй цены — пропускаем эту валюту
+				continue
 			}
 		}
 
@@ -254,6 +255,8 @@ func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols 
 		}
 
 		changePercent := ((currentPrice - prevPrice) / prevPrice) * 100
+
+		log.Printf("GetChangePercent: %s current=%.2f prev=%.2f change=%.2f%%", symbol, currentPrice, prevPrice, changePercent)
 
 		result = append(result, entity.Price{
 			Symbol:    symbol,

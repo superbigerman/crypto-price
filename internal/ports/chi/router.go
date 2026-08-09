@@ -24,7 +24,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 func NewServer(service PriceUseCase) (*Server, error) {
 	if service == nil { //
-		return nil, fmt.Errorf("errprs") // хиитрую ошибку добавить
+		return nil, fmt.Errorf("errprs")
 	}
 	r := chi.NewRouter()
 
@@ -60,19 +60,53 @@ func (s *Server) Start() {
 // @Failure 500 {string} string "Internal error"
 // @Router /api/v1/get/prices/last [get]
 func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
-
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)
 		return
 	}
+
 	splitSymbols := strings.Split(symbols, ",")
-	prices, err := s.service.GetPricesLast(req.Context(), splitSymbols)
+
+	var validSymbols []string
+	for _, s := range splitSymbols {
+		s = strings.TrimSpace(strings.ToUpper(s))
+		if s == "" {
+			continue
+		}
+		if len(s) < 2 || len(s) > 10 {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		valid := true
+		for _, c := range s {
+			if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		validSymbols = append(validSymbols, s)
+	}
+	if len(validSymbols) == 0 {
+		http.Error(rw, "symbols is required", http.StatusBadRequest)
+		return
+	}
+	if len(validSymbols) > 20 {
+		http.Error(rw, "too many symbols, max 20", http.StatusBadRequest)
+		return
+	}
+
+	prices, err := s.service.GetPricesLast(req.Context(), validSymbols)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
+
 	if len(prices) == 0 {
 		http.Error(rw, "not found", http.StatusNotFound)
 		return
@@ -83,17 +117,17 @@ func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 		data = append(data, dto.PriceDTO{
 			Symbol: v.Symbol,
 			Price:  v.Price,
-			Time:   v.CreatedAt.Format(time.RFC3339),
+			Time:   v.CreatedAt.Add(3 * time.Hour).Format("2006-01-02T15:04:05"),
 		})
 	}
 
 	rw.Header().Add("ContentType", "application/json")
+	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
-	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetMaxPrice================//
@@ -105,19 +139,53 @@ func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 // @Failure 500 {string} string "Internal error"
 // @Router /api/v1/get/prices/max [get]
 func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
-
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)
 		return
 	}
+
 	splitSymbols := strings.Split(symbols, ",")
-	prices, err := s.service.GetMaxPrices(req.Context(), splitSymbols)
+
+	var validSymbols []string
+	for _, s := range splitSymbols {
+		s = strings.TrimSpace(strings.ToUpper(s))
+		if s == "" {
+			continue
+		}
+		if len(s) < 2 || len(s) > 10 {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		valid := true
+		for _, c := range s {
+			if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		validSymbols = append(validSymbols, s)
+	}
+	if len(validSymbols) == 0 {
+		http.Error(rw, "symbols is required", http.StatusBadRequest)
+		return
+	}
+	if len(validSymbols) > 20 {
+		http.Error(rw, "too many symbols, max 20", http.StatusBadRequest)
+		return
+	}
+
+	prices, err := s.service.GetMaxPrices(req.Context(), validSymbols)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
+
 	if len(prices) == 0 {
 		http.Error(rw, "not found", http.StatusNotFound)
 		return
@@ -128,16 +196,17 @@ func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 		data = append(data, dto.PriceDTO{
 			Symbol: v.Symbol,
 			Price:  v.Price,
-			Time:   v.CreatedAt.Format(time.RFC3339),
+			Time:   v.CreatedAt.Add(3 * time.Hour).Format("2006-01-02T15:04:05"),
 		})
 	}
+
 	rw.Header().Add("ContentType", "application/json")
+	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
-	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetMinPrice================//
@@ -149,19 +218,53 @@ func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 // @Failure 500 {string} string "Internal error"
 // @Router /api/v1/get/prices/min [get]
 func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
-
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)
 		return
 	}
+
 	splitSymbols := strings.Split(symbols, ",")
-	prices, err := s.service.GetMinPrices(req.Context(), splitSymbols)
+
+	var validSymbols []string
+	for _, s := range splitSymbols {
+		s = strings.TrimSpace(strings.ToUpper(s))
+		if s == "" {
+			continue
+		}
+		if len(s) < 2 || len(s) > 10 {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		valid := true
+		for _, c := range s {
+			if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		validSymbols = append(validSymbols, s)
+	}
+	if len(validSymbols) == 0 {
+		http.Error(rw, "symbols is required", http.StatusBadRequest)
+		return
+	}
+	if len(validSymbols) > 20 {
+		http.Error(rw, "too many symbols, max 20", http.StatusBadRequest)
+		return
+	}
+
+	prices, err := s.service.GetMinPrices(req.Context(), validSymbols)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
+
 	if len(prices) == 0 {
 		http.Error(rw, "not found", http.StatusNotFound)
 		return
@@ -172,17 +275,17 @@ func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 		data = append(data, dto.PriceDTO{
 			Symbol: v.Symbol,
 			Price:  v.Price,
-			Time:   v.CreatedAt.Format(time.RFC3339),
+			Time:   v.CreatedAt.Add(3 * time.Hour).Format("2006-01-02T15:04:05"),
 		})
 	}
 
 	rw.Header().Add("ContentType", "application/json")
+	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
-	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetChangePrices================//
@@ -194,19 +297,53 @@ func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 // @Failure 500 {string} string "Internal error"
 // @Router /api/v1/get/prices/percent [get]
 func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
-
 	symbols := req.URL.Query().Get("symbols")
 	if symbols == "" {
 		http.Error(rw, "symbols is required", http.StatusBadRequest)
 		return
 	}
+
 	splitSymbols := strings.Split(symbols, ",")
-	prices, err := s.service.GetChangePercent(req.Context(), splitSymbols)
+
+	var validSymbols []string
+	for _, s := range splitSymbols {
+		s = strings.TrimSpace(strings.ToUpper(s))
+		if s == "" {
+			continue
+		}
+		if len(s) < 2 || len(s) > 10 {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		valid := true
+		for _, c := range s {
+			if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			http.Error(rw, fmt.Sprintf("invalid symbol: %s", s), http.StatusBadRequest)
+			return
+		}
+		validSymbols = append(validSymbols, s)
+	}
+	if len(validSymbols) == 0 {
+		http.Error(rw, "symbols is required", http.StatusBadRequest)
+		return
+	}
+	if len(validSymbols) > 20 {
+		http.Error(rw, "too many symbols, max 20", http.StatusBadRequest)
+		return
+	}
+
+	prices, err := s.service.GetChangePercent(req.Context(), validSymbols)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
+
 	if len(prices) == 0 {
 		http.Error(rw, "not found", http.StatusNotFound)
 		return
@@ -217,15 +354,15 @@ func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
 		data = append(data, dto.PriceDTO{
 			Symbol: v.Symbol,
 			Price:  v.Price,
-			Time:   v.CreatedAt.Format(time.RFC3339),
+			Time:   v.CreatedAt.Add(3 * time.Hour).Format("2006-01-02T15:04:05"),
 		})
 	}
 
 	rw.Header().Add("ContentType", "application/json")
+	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
 	}
-	rw.WriteHeader(http.StatusOK)
 }

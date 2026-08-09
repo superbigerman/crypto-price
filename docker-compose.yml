@@ -1,22 +1,7 @@
 services:
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: macbook
-      POSTGRES_HOST_AUTH_METHOD: trust
-      POSTGRES_DB: crypto
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
-
   app:
     build: .
     ports:
       - "8080:8080"
-    depends_on:
-      - db
-
-volumes:
-  pgdata:
+    environment:
+      - TZ=Europe/Moscow

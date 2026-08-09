@@ -22,5 +22,13 @@ func startCron(uc usecases.PriceUseCase, cfg *config.Config) {
 		}
 	})
 
+	// Первый запуск сразу
+	go func() {
+		log.Println("Cron: initial update...")
+		if err := uc.UpdateAllPrices(context.Background()); err != nil {
+			log.Printf("Cron error: %v", err)
+		}
+	}()
+
 	c.Start()
 }

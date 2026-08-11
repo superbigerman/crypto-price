@@ -104,7 +104,7 @@ func (c *CoinDeskClient) GetRealTimePrices(ctx context.Context, symbols []string
 		break
 	}
 
-	// ========== ПАРСИНГ JSON ==========
+	
 	// ========== ПАРСИНГ JSON ==========
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

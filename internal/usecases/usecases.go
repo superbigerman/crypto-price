@@ -107,10 +107,15 @@ func (uc *PriceUseCaseImpl) GetChangePercent(ctx context.Context, symbols []stri
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("GetChangePercent: symbols list cannot be empty")
 	}
+
+	// Вызываем GetPricesLast, чтобы добавить недостающие валюты
+	_, err := uc.GetPricesLast(ctx, symbols)
+	if err != nil {
+		return nil, fmt.Errorf("GetChangePercent: failed to ensure symbols exist: %w", err)
+	}
+
+	// Теперь все валюты есть в БД
 	return uc.repo.GetChangePercent(ctx, symbols)
-}
-func (uc *PriceUseCaseImpl) GetAllSymbols(ctx context.Context) ([]string, error) {
-	return uc.repo.GetAllSymbols(ctx)
 }
 
 func (uc *PriceUseCaseImpl) UpdateAllPrices(ctx context.Context) error {
@@ -129,4 +134,8 @@ func (uc *PriceUseCaseImpl) UpdateAllPrices(ctx context.Context) error {
 	}
 
 	return uc.repo.SavePrices(ctx, prices)
+}
+
+func (uc *PriceUseCaseImpl) GetAllSymbols(ctx context.Context) ([]string, error) {
+	return uc.repo.GetAllSymbols(ctx)
 }

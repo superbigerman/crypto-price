@@ -6,7 +6,8 @@ COPY . .
 RUN go build -o server cmd/main.go
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates tzdata
+ENV TZ=Europe/Moscow
 WORKDIR /root/
 COPY --from=builder /app/server .
 COPY --from=builder /app/config.yaml .

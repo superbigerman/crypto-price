@@ -220,13 +220,13 @@ func (r *PriceRepositoryPostgres) GetChangePercent(ctx context.Context, symbols 
 
 		// Текущая цена
 		err := r.pool.QueryRow(ctx, `
-   SELECT price FROM prices 
-   WHERE symbol = $1 
-   ORDER BY created_at DESC 
-   LIMIT 1
-  `, symbol).Scan(&currentPrice)
+    SELECT price FROM prices 
+    WHERE symbol = $1 
+    ORDER BY created_at DESC 
+    LIMIT 1
+`, symbol).Scan(&currentPrice)
 		if err != nil {
-			return nil, fmt.Errorf("GetChangePercent: failed to get current price for %s: %w", symbol, err)
+			continue
 		}
 
 		// Пробуем цену час назад

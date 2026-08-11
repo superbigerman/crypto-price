@@ -340,7 +340,7 @@ func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
 	prices, err := s.service.GetChangePercent(req.Context(), validSymbols)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		http.Error(rw, "internal error", http.StatusInternalServerError)
+		http.Error(rw, "not found", http.StatusNotFound) // 404 вместо 500
 		return
 	}
 

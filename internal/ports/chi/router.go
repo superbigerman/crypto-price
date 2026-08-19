@@ -340,21 +340,40 @@ func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
 	prices, err := s.service.GetChangePercent(req.Context(), validSymbols)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		http.Error(rw, "not found", http.StatusNotFound) // 404 вместо 500
+		http.Error(rw, "no data for this currency yet, try again in 5 minutes", http.StatusOK)
 		return
 	}
 
 	if len(prices) == 0 {
-		http.Error(rw, "not found", http.StatusNotFound)
+		http.Error(rw, "no data for this currency yet, try again in 5 minutes", http.StatusOK)
 		return
 	}
 
 	var data []dto.PriceDTO
+	found := make(map[string]bool)
+
 	for _, v := range prices {
+		found[v.Symbol] = true
 		data = append(data, dto.PriceDTO{
 			Symbol: v.Symbol,
 			Price:  v.Price,
 			Time:   v.CreatedAt.Add(3 * time.Hour).Format("2006-01-02T15:04:05"),
+		})
+	}
+
+	// Проверяем отсутствующие символы
+	var missing []string
+	for _, s := range validSymbols {
+		if !found[s] {
+			missing = append(missing, s)
+		}
+	}
+
+	// Добавляем отсутствующие валюты с сообщением
+	for _, s := range missing {
+		data = append(data, dto.PriceDTO{
+			Symbol:  s,
+			Message: "no data yet, try again in 5 minutes",
 		})
 	}
 

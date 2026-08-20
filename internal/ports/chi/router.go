@@ -122,12 +122,12 @@ func (s *Server) GetLastPrice(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	rw.Header().Add("ContentType", "application/json")
-	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
-		http.Error(rw, "internal error", http.StatusInternalServerError)
+		fmt.Errorf("ERROR: failed to encode response: %v", err)
 		return
 	}
+	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetMaxPrice================//
@@ -201,12 +201,12 @@ func (s *Server) GetMaxPrice(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	rw.Header().Add("ContentType", "application/json")
-	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
-		http.Error(rw, "internal error", http.StatusInternalServerError)
+		fmt.Errorf("ERROR: failed to encode response: %v", err)
 		return
 	}
+	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetMinPrice================//
@@ -280,12 +280,12 @@ func (s *Server) GetMinPrice(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	rw.Header().Add("ContentType", "application/json")
-	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
-		http.Error(rw, "internal error", http.StatusInternalServerError)
+		fmt.Errorf("ERROR: failed to encode response: %v", err)
 		return
 	}
+	rw.WriteHeader(http.StatusOK)
 }
 
 // ================GetChangePrices================//
@@ -378,10 +378,10 @@ func (s *Server) GetChangePercent(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	rw.Header().Add("ContentType", "application/json")
-	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(data)
 	if err != nil {
-		http.Error(rw, "internal error", http.StatusInternalServerError)
+		fmt.Errorf("ERROR: failed to encode response: %v", err)
 		return
 	}
+	rw.WriteHeader(http.StatusOK)
 }

@@ -3,7 +3,7 @@ server:
 
 coindesk:
   url: https://min-api.cryptocompare.com
-  api_key: 8f0e2c669b899a53f6fdeb863120e675471f1240e01ef84ce316b1d0b2c9309c
+  api_key: 939bec05226ff0969a13ef0e60b6cd76fa08f866e8a3dc41a18362f51ec577f9
   timeout_sec: 10
 
 database:
